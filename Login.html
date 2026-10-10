@@ -1,22 +1,49 @@
 <!DOCTYPE html>
 <html lang="de">
 
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title Trusty-Lynx Login></title>
-        <link rel="stylesheet" href="style.css">
-    </head>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Trusty-Lynx Login</title>
+    <link rel="stylesheet" href="style.css">
+</head>
 
+<body>
     <main class="screen">
 
         <section class="card">
             <div class="logo">
                 <img src="..." alt="Trusty-Lynx Logo">
             </div>
-            <h1 id="autch-title">Deine Passwörter geschützt an einem Ort</h1>
-            
+
+            <h1 id="subtitle">Deine Passwörter geschützt an einem Ort</h1>
+            <p class="auth-subtitle">Melde dich jetzt an!</p>
+
+            <form id="login-form" novalidate>
+                <div class="field">
+                    <label for="email">E-Mail</label>
+                    <input id="email" type="email" autocomplete="email" placeholder="name@beispiel.de" required>
+                </div>
+
+                <div class="field">
+                    <label for="password">Konto-Passwort</label>
+                    <div class="input-wrap">
+                        <input id="password" type="password" autocomplete="current-password" required>
+                        <button type="button" class="toggle" id="toggle-password">Zeigen</button>
+                    </div>
+                </div>
+
+                <p class="error" id="auth-error" role="alert"></p>
+                <button class="btn primary" id="auth-submit" type="submit">Anmelden</button>
+            </form>
+
+            <p class="account-create">
+                Noch kein Account?
+                <a href="...">Account erstellen</a>
+            </p>
         </section>
 
     </main>
+</body>
 
 </html>
