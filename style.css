@@ -1,0 +1,119 @@
+/*Hintergrund und Box in der Mitte*/
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #eeeeee;
+}
+
+.screen {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 16px;
+}
+
+.card {
+    width: 100%;
+    max-width: 380px;
+    background: white;
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/*Text-und Eingabefelder */
+
+h1 {
+    font-size: 20px;
+    text-align: center;
+    margin: 0 0 4px;
+}
+
+.auth-subtitle {
+    text-align: center;
+    color: #666666;
+    margin: 0 0 24px;
+}
+
+.logo {
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.field {
+    margin-bottom: 16px;
+}
+
+label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 14px;
+}
+
+input {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+}
+
+.input-wrap {
+    display: flex;
+    gap: 8px;
+}
+
+/*Buttons und Hinweise*/
+
+
+.btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.primary {
+    background: #333333;
+    color: white;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.toggle {
+    padding: 0 12px;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+}
+
+.error {
+    color: #cc0000;
+    font-size: 14px;
+    min-height: 18px;
+    margin: 0 0 12px;
+}
+
+.hint {
+    color: #666666;
+    font-size: 13px;
+    margin: 0 0 12px;
+}
+
+.account-create {
+    text-align: center;
+    font-size: 14px;
+    margin: 24px 0 0;
+}

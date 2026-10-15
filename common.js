@@ -1,4 +1,5 @@
-const API_BASE = "/api";
+const API_BASE = "https://auth.nexvent.de";
+
 const KDF = { alg: "argon2id", m: 65536, t: 3, p: 1, len: 32 };
 
 
