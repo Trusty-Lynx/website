@@ -14,7 +14,7 @@ togglePasswordButton.addEventListener("click", () => {
         togglePasswordButton.textContent = "Verbergen";
     } else {
         passwordInput.type = "password";
-        togglePasswordButton.textContent = "Anzeigen";
+        togglePasswordButton.textContent = "Zeigen";
     }
 });
 
@@ -62,16 +62,23 @@ form.addEventListener("submit", async (event) => {
 
         const loginKey = bytesToBase64(loginKeyBytes);
 
+        const loginBody = { email: email, loginKey: loginKey };
+
+        const firstLogin = localStorage.getItem("deviceRegistered:" + email) !== "true";
+        if (firstLogin) {
+            loginBody.device = {
+                name: getDeviceName(),
+                publicKey: await getDevicePublicKey(),
+            };
+        }
+
         const loginResponse = await fetch(API_BASE + "/login", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "X-Device-Id": getDeviceId(),
             },
-            body: JSON.stringify({
-                email: email,
-                loginKey: loginKey,
-            }),
+            body: JSON.stringify(loginBody),
         });
 
         if (loginResponse.status === 401) {
@@ -94,9 +101,11 @@ form.addEventListener("submit", async (event) => {
         sessionStorage.setItem("loginToken", loginData.token);
         sessionStorage.setItem("userId", loginData.userId);
         passwordInput.value = "";
+        localStorage.setItem("deviceRegistered:" + email, "true");
+        window.location.href = "Dashboard.html";
 
     } catch (error) {
-        console.error(error);
+        console.error(error); 
         errorText.textContent = "Server nicht erreichbar. Bitte prüfe deine Internetverbindung.";
     } finally {
         submitButton.disabled = false;
@@ -121,3 +130,54 @@ function getDeviceId() {
     }
     return id;
 }
+
+function getDeviceName() {
+    const platform = navigator.userAgentData?.platform || navigator.platform || "Unknown";
+    return ("Browser auf " + platform).slice(0, 100);
+}
+
+
+async function getDevicePublicKey() {
+    let keyPair = await loadDeviceKeyPair();
+    if (!keyPair) {
+        const generated = await crypto.subtle.generateKey(
+            { name: "ECDSA", namedCurve: "P-256" },
+            false,
+            ["sign", "verify"]
+        );
+        keyPair = { publicKey: generated.publicKey, privateKey: generated.privateKey };
+        await saveDeviceKeyPair(keyPair);
+    }
+    const raw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
+    return bytesToBase64(new Uint8Array(raw));
+}
+
+function openKeyStore() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open("trusty-lynx", 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("keys");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function loadDeviceKeyPair() {
+    const db = await openKeyStore();
+    return new Promise((resolve, reject) => {
+        const request = db.transaction("keys").objectStore("keys").get("device");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function saveDeviceKeyPair(keyPair) {
+    const db = await openKeyStore();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction("keys", "readwrite");
+        transaction.objectStore("keys").put(keyPair, "device");
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+
