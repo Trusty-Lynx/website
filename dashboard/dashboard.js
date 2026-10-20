@@ -2,6 +2,10 @@ const logoutButton = document.getElementById("logout-button");
 
 const loginToken = sessionStorage.getItem("loginToken");
 
+// Tresor-Token und Tresorschlüssel nur im Arbeitsspeicher, nie im Storage
+let vaultToken = null;
+let dek = null;
+
 if (!loginToken) {
     window.location.href = "Login.html";
 }
@@ -39,6 +43,9 @@ async function vaultRequest(method, path, body) {
     };
     if (body) {
         headers["Content-Type"] = "application/json";
+    }
+    if (vaultToken) {
+        headers["X-Vault-Token"] = vaultToken;
     }
 
     return fetch(VAULT_BASE + path, {
@@ -108,9 +115,6 @@ showLock();
 
 const lock = document.getElementById("lock");
 const createError = document.getElementById("create-error");
-
-let vaultToken = null;
-let dek = null;
 
 createForm.addEventListener("submit", async (event) => {
     event.preventDefault();
