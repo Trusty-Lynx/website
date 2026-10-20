@@ -71,8 +71,9 @@ async function saveDeviceKeyPair(keyPair) {
 }
 
 
+// loginKey = HKDF(Argon2id(Kontopasswort, salt_login), "TL-login-v1")
 async function deriveLoginKey(password, saltBytes, kdf) {
-    const keyBytes = await hashwasm.argon2id({
+    const lk = await hashwasm.argon2id({
         password: password,
         salt: saltBytes,
         parallelism: kdf.p,
@@ -81,7 +82,24 @@ async function deriveLoginKey(password, saltBytes, kdf) {
         hashLength: kdf.len,
         outputType: "binary",
     });
-    return bytesToBase64(keyBytes);
+    const loginKey = await hkdf(lk, "TL-login-v1");
+    return bytesToBase64(loginKey);
+}
+
+// HKDF-SHA256 laut Verschlüsselung.md: Salt = 32 × 00, Länge 32 Byte, info = Etikett als UTF-8
+async function hkdf(keyBytes, label) {
+    const key = await crypto.subtle.importKey("raw", keyBytes, "HKDF", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits(
+        {
+            name: "HKDF",
+            hash: "SHA-256",
+            salt: new Uint8Array(32),
+            info: new TextEncoder().encode(label),
+        },
+        key,
+        256
+    );
+    return new Uint8Array(bits);
 }
 
 

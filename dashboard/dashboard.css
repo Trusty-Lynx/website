@@ -42,6 +42,7 @@ body {
 .content {
     grid-area: content;
     padding: 24px 32px;
+    position: relative;
 }
 
 
@@ -160,4 +161,80 @@ body {
     margin: 0;
     color: #6b7280;
     font-size: 14px;
+}
+
+/* Milchglas über dem Inhalt */
+
+.lock {
+    position: absolute;
+    inset: 0;
+    background: rgba(238, 238, 238, 0.6);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.lock-box {
+    width: 100%;
+    max-width: 380px;
+    background: white;
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.lock-title {
+    margin: 0 0 24px;
+    font-size: 20px;
+    text-align: center;
+}
+
+/* Formulare, gleiche Linie wie Login und Registrierung */
+
+.field {
+    margin-bottom: 16px;
+}
+
+label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 14px;
+}
+
+input,
+select {
+    width: 100%;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 16px;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+}
+
+.btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.primary {
+    background: #333333;
+    color: white;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.error {
+    color: #cc0000;
+    font-size: 14px;
+    min-height: 18px;
+    margin: 0 0 12px;
 }

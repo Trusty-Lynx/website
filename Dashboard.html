@@ -54,8 +54,44 @@
                 <h2 class="vault-title">Tresor</h2>
                 <p class="vault-empty" id="vault-empty">Noch keine Einträge vorhanden.</p>
             </section>
-        </main>
 
+            <div class="lock" id="lock">
+                <div class="lock-box">
+
+                    <form id="unlock-form" novalidate>
+                        <h2 class="lock-title">Tresor entsperren</h2>
+                        <div class="field">
+                            <label for="unlock-password">Masterpasswort</label>
+                            <input id="unlock-password" type="password" autocomplete="current-password" required>
+                        </div>
+                        <p class="error" id="unlock-error" role="alert"></p>
+                        <button class="btn primary" type="submit">Entsperren</button>
+                    </form>
+
+                    <form id="create-form" novalidate hidden>
+                        <h2 class="lock-title">Tresor erstellen</h2>
+                        <div class="field">
+                            <label for="create-password">Masterpasswort</label>
+                            <input id="create-password" type="password" autocomplete="new-password" required>
+                        </div>
+                        <div class="field">
+                            <label for="create-password-confirm">Masterpasswort wiederholen</label>
+                            <input id="create-password-confirm" type="password" autocomplete="new-password" required>
+                        </div>
+                        <div class="field">
+                            <label for="create-level">Sicherheitsstufe</label>
+                            <select id="create-level">
+                                <option value="standard">Standard</option>
+                                <option value="hoch">Hoch</option>
+                            </select>
+                        </div>
+                        <p class="error" id="create-error" role="alert"></p>
+                        <button class="btn primary" type="submit">Tresor erstellen</button>
+                    </form>
+
+                </div>
+            </div>
+        </main>
 
     </div>
 
