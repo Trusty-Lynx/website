@@ -3,27 +3,64 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Trusty-Lynx Dashboard</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrustyLynx - Dashboard</title>
+    <link rel="stylesheet" href="dashboard/dashboard.css">
 </head>
 
 <body>
-    <main class="screen">
+    <div class="app">
 
-        <section class="card">
-            <h1>Willkommen bei Trusty-Lynx</h1>
-            <p class="auth-subtitle">Du bist angemeldet.</p>
+        <aside class="sidebar">
+            <div class="brand">
+                <img src="zustand_wachsam.png" alt="Trusty Lynx Logo" class="brand-logo">
+            </div>
 
-            <p class="error" id="dashboard-error" role="alert"></p>
-            <button class="btn primary" id="logout-button" type="button">Abmelden</button>
-        </section>
+            <nav class="nav">
+                <a href="#/dashboard" class="nav-link active">Dashboard</a>
+                <a href="#/tresor" class="nav-link">Tresor</a>
+                <a href="#/einstellungen" class="nav-link">Einstellungen</a>
+            </nav>
 
-    </main>
+            <button type="button" class="logout" id="logout-button">Abmelden</button>
+        </aside>
+
+        <header class="topbar">
+            <span class="app-name">TrustyLynx</span>
+        </header>
+
+                <main class="content">
+            <h1 class="page-title">Hallo!</h1>
+            <p class="page-subtitle">Schön, dass du wieder da bist. Hier ist ein Überblick über deinen Tresor.</p>
+
+            <section class="cards">
+                <article class="card">
+                    <h2 class="card-title">Gespeicherte Passwörter</h2>
+                    <p class="card-value" id="stat-count">–</p>
+                </article>
+
+                <article class="card">
+                    <h2 class="card-title">Sicherheitsstufe</h2>
+                    <p class="card-value" id="stat-level">–</p>
+                </article>
+
+                <article class="card">
+                    <h2 class="card-title">Letzter Login</h2>
+                    <p class="card-value" id="stat-last-login">–</p>
+                </article>
+            </section>
+
+            <section class="card vault">
+                <h2 class="vault-title">Tresor</h2>
+                <p class="vault-empty" id="vault-empty">Noch keine Einträge vorhanden.</p>
+            </section>
+        </main>
+
+
+    </div>
 
     <script src="common.js"></script>
-    <script src="Dashboard.js"></script>
-
+    <script src="dashboard/dashboard.js"></script>
 </body>
 
 </html>
