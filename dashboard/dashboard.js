@@ -92,6 +92,19 @@ async function wrapDek(dekBytes, kekBytes) {
     return wdek;
 }
 
+async function unwrapDek(wdek, kekBytes) {
+    const kek = await crypto.subtle.importKey("raw", kekBytes, "AES-GCM", false, ["decrypt"]);
+    const decrypted = await crypto.subtle.decrypt(
+        {
+            name: "AES-GCM",
+            iv: wdek.slice(2, 14),
+            additionalData: new TextEncoder().encode("TL-DEK|" + sessionStorage.getItem("userId")),
+        },
+        kek,
+        wdek.slice(14)
+    );
+    return new Uint8Array(decrypted);
+}
 
 async function showLock() {
     try {
@@ -173,3 +186,64 @@ createForm.addEventListener("submit", async (event) => {
     }
 });
 
+const unlockError = document.getElementById("unlock-error");
+
+unlockForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    unlockError.textContent = "";
+
+    const passwordInput = document.getElementById("unlock-password");
+    if (!passwordInput.value) {
+        unlockError.textContent = "Bitte Masterpasswort eingeben.";
+        return;
+    }
+
+    const button = unlockForm.querySelector("button");
+    button.disabled = true;
+
+    try {
+        const paramsResponse = await vaultRequest("GET", "/vault/params");
+        if (!paramsResponse.ok) {
+            unlockError.textContent = "Tresor gerade nicht erreichbar.";
+            return;
+        }
+        const params = await paramsResponse.json();
+
+        const keys = await deriveVaultKeys(passwordInput.value, base64ToBytes(params.salt), params.kdf);
+
+        const response = await vaultRequest("POST", "/vault/unlock", {
+            unlockKey:bytesToBase64(keys.unlockKey),
+        });
+
+        if (response.status === 401) {
+            unlockError.textContent = "Masterpasswort ist falsch.";
+            return;
+        }
+        if (response.status === 429) {
+            const seconds = response.headers.get("Retry-After");
+            unlockError.textContent = `Zu viele Fehlversuche. Bitte ${seconds} Sekunden warten.`;
+            return;
+        }
+        if (!response.ok) {
+            unlockError.textContent = "Tresor konnte nicht entsperrt werden.";
+            return;
+        }
+
+        const data = await response.json();
+        const dekBytes = await unwrapDek(base64ToBytes(data.wdek), keys.kek);
+
+        vaultToken = data.vaultToken;
+        dek = await crypto.subtle.importKey("raw", dekBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+        passwordInput.value = "";
+        lock.hidden = true;
+    } catch (error) {
+        console.error(error);
+        if (error.name === "OperationError") {
+            unlockError.textContent = "Tresor konnte nicht geöffnet werden.";
+        } else {
+            unlockError.textContent = "Tresor-Server nicht erreichbar.";
+        }
+    } finally {
+        button.disabled = false;
+    }
+});
