@@ -18,7 +18,6 @@ logoutButton.addEventListener("click", async () => {
             method: "POST",
             headers: {
                 "Authorization": "Bearer " + loginToken,
-                "X-Device-Id": await getDeviceId(),
             },
         });
     } catch (error) {
@@ -34,12 +33,24 @@ const lockMessage = document.getElementById("lock-message");
 const unlockForm = document.getElementById("unlock-form");
 const createForm = document.getElementById("create-form");
 
+// Platzhalter-Session für den Vault (X-Session-Id), bis das Gateway sie aus dem Login-Token setzt
+function getVaultSessionId() {
+    let id = sessionStorage.getItem("vaultSessionId");
+    if (!id) {
+        id = crypto.randomUUID();
+        sessionStorage.setItem("vaultSessionId", id);
+    }
+    return id;
+}
+
 async function vaultRequest(method, path, body) {
     const bodyText = body ? JSON.stringify(body) : "";
 
     const headers = {
         "Authorization": "Bearer " + loginToken,
-        ...(await signRequest(method, path, bodyText)),
+        // Platzhalter, solange es kein Gateway gibt (Vault-Doku von Aaron)
+        "X-User-Id": sessionStorage.getItem("userId"),
+        "X-Session-Id": getVaultSessionId(),
     };
     if (body) {
         headers["Content-Type"] = "application/json";
@@ -65,10 +76,12 @@ async function deriveVaultKeys(password, saltBytes, kdf) {
         hashLength: kdf.len,
         outputType: "binary",
     });
-    return {
+    const keys = {
         unlockKey: await hkdf(mk, "TL-auth-v1"),
         kek: await hkdf(mk, "TL-enc-v1"),
     };
+    mk.fill(0);
+    return keys;
 }
 
 
@@ -135,7 +148,7 @@ createForm.addEventListener("submit", async (event) => {
 
     const password = document.getElementById("create-password").value;
     const passwordConfirm = document.getElementById("create-password-confirm").value;
-    const securityLevel = document.getElementById("create-level").value;
+    const confirmed = document.getElementById("create-confirm").checked;
 
     if (password.length < 12) {
         createError.textContent = "Das Masterpasswort muss mindestens 12 Zeichen lang sein.";
@@ -143,6 +156,10 @@ createForm.addEventListener("submit", async (event) => {
     }
     if (password !== passwordConfirm) {
         createError.textContent = "Die Masterpasswörter stimmen nicht überein.";
+        return;
+    }
+    if (!confirmed) {
+        createError.textContent = "Bitte bestätige, dass ein vergessenes Masterpasswort nicht wiederherstellbar ist.";
         return;
     }
 
@@ -156,13 +173,15 @@ createForm.addEventListener("submit", async (event) => {
         const dekBytes = crypto.getRandomValues(new Uint8Array(32));
         const wdek = await wrapDek(dekBytes, keys.kek);
 
+        // securityLevel lässt der Vault im Moment noch nicht zu (400), deshalb nicht mitschicken
         const response = await vaultRequest("POST", "/vault", {
-            securityLevel: securityLevel,
             salt: bytesToBase64(saltBytes),
             kdf: KDF,
             unlockKey: bytesToBase64(keys.unlockKey),
             wdek: bytesToBase64(wdek),
         });
+        keys.unlockKey.fill(0);
+        keys.kek.fill(0);
 
         if (response.status === 409) {
             createForm.hidden = true;
@@ -177,6 +196,7 @@ createForm.addEventListener("submit", async (event) => {
         const data = await response.json();
         vaultToken = data.vaultToken;
         dek = await crypto.subtle.importKey("raw", dekBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+        dekBytes.fill(0);
         lock.hidden = true;
     } catch (error) {
         console.error(error);
@@ -203,17 +223,27 @@ unlockForm.addEventListener("submit", async (event) => {
 
     try {
         const paramsResponse = await vaultRequest("GET", "/vault/params");
+        if (paramsResponse.status === 404) {
+            unlockForm.hidden = true;
+            createForm.hidden = false;
+            return;
+        }
         if (!paramsResponse.ok) {
             unlockError.textContent = "Tresor gerade nicht erreichbar.";
             return;
         }
         const params = await paramsResponse.json();
+        if (!isDefaultKdf(params.kdf)) {
+            unlockError.textContent = "Der Tresor konnte nicht geöffnet werden.";
+            return;
+        }
 
         const keys = await deriveVaultKeys(passwordInput.value, base64ToBytes(params.salt), params.kdf);
 
         const response = await vaultRequest("POST", "/vault/unlock", {
-            unlockKey:bytesToBase64(keys.unlockKey),
+            unlockKey: bytesToBase64(keys.unlockKey),
         });
+        keys.unlockKey.fill(0);
 
         if (response.status === 401) {
             unlockError.textContent = "Masterpasswort ist falsch.";
@@ -224,16 +254,27 @@ unlockForm.addEventListener("submit", async (event) => {
             unlockError.textContent = `Zu viele Fehlversuche. Bitte ${seconds} Sekunden warten.`;
             return;
         }
+        if (response.status === 500) {
+            unlockError.textContent = "Der Tresor konnte nicht geöffnet werden.";
+            return;
+        }
         if (!response.ok) {
             unlockError.textContent = "Tresor konnte nicht entsperrt werden.";
             return;
         }
 
         const data = await response.json();
-        const dekBytes = await unwrapDek(base64ToBytes(data.wdek), keys.kek);
+        const wdek = base64ToBytes(data.wdek);
+        if (wdek.length !== 62 || wdek[0] !== 1 || wdek[1] !== 1) {
+            unlockError.textContent = "Der Tresor konnte nicht geöffnet werden.";
+            return;
+        }
+        const dekBytes = await unwrapDek(wdek, keys.kek);
+        keys.kek.fill(0);
 
         vaultToken = data.vaultToken;
         dek = await crypto.subtle.importKey("raw", dekBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+        dekBytes.fill(0);
         passwordInput.value = "";
         lock.hidden = true;
     } catch (error) {

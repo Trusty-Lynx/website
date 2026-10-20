@@ -242,3 +242,14 @@ select {
     min-height: 18px;
     margin: 0 0 12px;
 }
+
+.checkbox {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.checkbox input {
+    width: auto;
+    margin-top: 2px;
+}

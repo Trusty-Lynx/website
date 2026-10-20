@@ -62,18 +62,12 @@ form.addEventListener("submit", async (event) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-Device-Id": await getDeviceId(),
             },
             body: JSON.stringify({
                 email: email,
                 salt: salt,
                 kdf: KDF,
                 loginKey: loginKey,
-                device: {
-                    id: await getDeviceId(),
-                    name: getDeviceName(),
-                    publicKey: await getDevicePublicKey(),
-                },
             }),
         });
 
@@ -91,7 +85,6 @@ form.addEventListener("submit", async (event) => {
         const data = await response.json();
         sessionStorage.setItem("loginToken", data.token);
         sessionStorage.setItem("userId", data.userId);
-        localStorage.setItem("deviceRegistered:" + email, "true");
         passwordInput.value = "";
         passwordConfirmInput.value = "";
         window.location.href = "Dashboard.html";

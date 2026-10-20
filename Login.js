@@ -47,29 +47,25 @@ form.addEventListener("submit", async (event) => {
         }
 
         const preloginData = await preloginResponse.json();
-        const loginKey = await deriveLoginKey(password, base64ToBytes(preloginData.salt), preloginData.kdf);
-
-        const loginBody = { email: email, loginKey: loginKey };
-
-        const firstLogin = localStorage.getItem("deviceRegistered:" + email) !== "true";
-        if (firstLogin) {
-            loginBody.device = {
-                name: getDeviceName(),
-                publicKey: await getDevicePublicKey(),
-            };
+        if (!isDefaultKdf(preloginData.kdf)) {
+            errorText.textContent = "Anmeldung gerade nicht möglich. Bitte versuche es später erneut.";
+            return;
         }
+        const loginKey = await deriveLoginKey(password, base64ToBytes(preloginData.salt), preloginData.kdf);
 
         const loginResponse = await fetch(API_BASE + "/login", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-Device-Id": await getDeviceId(),
             },
-            body: JSON.stringify(loginBody),
+            body: JSON.stringify({
+                email: email,
+                loginKey: loginKey,
+            }),
         });
 
         if (loginResponse.status === 401) {
-            errorText.textContent = "E-Mail oder Passwort ist falsch.";
+            errorText.textContent = "Anmeldung fehlgeschlagen.";
             return;
         }
 
@@ -88,7 +84,6 @@ form.addEventListener("submit", async (event) => {
         sessionStorage.setItem("loginToken", loginData.token);
         sessionStorage.setItem("userId", loginData.userId);
         passwordInput.value = "";
-        localStorage.setItem("deviceRegistered:" + email, "true");
         window.location.href = "Dashboard.html";
 
     } catch (error) {

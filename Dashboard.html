@@ -80,11 +80,10 @@
                             <input id="create-password-confirm" type="password" autocomplete="new-password" required>
                         </div>
                         <div class="field">
-                            <label for="create-level">Sicherheitsstufe</label>
-                            <select id="create-level">
-                                <option value="standard">Standard</option>
-                                <option value="hoch">Hoch</option>
-                            </select>
+                            <label class="checkbox">
+                                <input id="create-confirm" type="checkbox">
+                                Ein vergessenes Masterpasswort kann niemand wiederherstellen.
+                            </label>
                         </div>
                         <p class="error" id="create-error" role="alert"></p>
                         <button class="btn primary" type="submit">Tresor erstellen</button>
