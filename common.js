@@ -12,13 +12,13 @@ function bytesToBase64(bytes) {
     return btoa(String.fromCharCode(...bytes));
 }
 
-function getDeviceId() {
-    let id = localStorage.getItem("deviceId");
-    if (!id) {
-        id = crypto.randomUUID();
-        localStorage.setItem("deviceId", id);
-    }
-    return id;
+
+async function getDeviceId() {
+    const publicKey = await getDevicePublicKey();
+    return publicKey
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
 }
 
 function getDeviceName() {

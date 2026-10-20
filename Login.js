@@ -63,7 +63,7 @@ form.addEventListener("submit", async (event) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-Device-Id": getDeviceId(),
+                "X-Device-Id": await getDeviceId(),
             },
             body: JSON.stringify(loginBody),
         });

@@ -62,7 +62,7 @@ form.addEventListener("submit", async (event) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-Device-Id": getDeviceId(),
+                "X-Device-Id": await getDeviceId(),
             },
             body: JSON.stringify({
                 email: email,
@@ -70,7 +70,7 @@ form.addEventListener("submit", async (event) => {
                 kdf: KDF,
                 loginKey: loginKey,
                 device: {
-                    id: getDeviceId(),
+                    id: await getDeviceId(),
                     name: getDeviceName(),
                     publicKey: await getDevicePublicKey(),
                 },
