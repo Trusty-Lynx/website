@@ -1,4 +1,5 @@
 const API_BASE = "https://auth.nexvent.de";
+const VAULT_BASE = "https://vault.nexvent.de"; 
 
 const KDF = { alg: "argon2id", m: 65536, t: 3, p: 1, len: 32 };
 
@@ -71,7 +72,7 @@ async function saveDeviceKeyPair(keyPair) {
 }
 
 
-// loginKey = HKDF(Argon2id(Kontopasswort, salt_login), "TL-login-v1")
+
 async function deriveLoginKey(password, saltBytes, kdf) {
     const lk = await hashwasm.argon2id({
         password: password,
@@ -86,7 +87,7 @@ async function deriveLoginKey(password, saltBytes, kdf) {
     return bytesToBase64(loginKey);
 }
 
-// HKDF-SHA256 laut Verschlüsselung.md: Salt = 32 × 00, Länge 32 Byte, info = Etikett als UTF-8
+
 async function hkdf(keyBytes, label) {
     const key = await crypto.subtle.importKey("raw", keyBytes, "HKDF", false, ["deriveBits"]);
     const bits = await crypto.subtle.deriveBits(
@@ -100,6 +101,31 @@ async function hkdf(keyBytes, label) {
         256
     );
     return new Uint8Array(bits);
+}
+
+async function signRequest(method, path, body) {
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+
+    const bodyHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body || ""));
+    const message = method + "|" + path + "|" + timestamp + "|" + bytesToHex(new Uint8Array(bodyHash));
+
+    await getDevicePublicKey();
+    const keyPair = await loadDeviceKeyPair();
+    const signature = await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        keyPair.privateKey,
+        new TextEncoder().encode(message)
+    );
+
+    return {
+        "X-Device-Id": await getDeviceId(),
+        "X-Timestamp": timestamp,
+        "X-Device-Sig": bytesToBase64(new Uint8Array(signature)),
+    };
+}
+
+function bytesToHex(bytes) {
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 

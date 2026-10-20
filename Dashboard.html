@@ -29,7 +29,7 @@
             <span class="app-name">TrustyLynx</span>
         </header>
 
-                <main class="content">
+            <main class="content">
             <h1 class="page-title">Hallo!</h1>
             <p class="page-subtitle">Schön, dass du wieder da bist. Hier ist ein Überblick über deinen Tresor.</p>
 
@@ -57,8 +57,9 @@
 
             <div class="lock" id="lock">
                 <div class="lock-box">
+                    <p class="error" id="lock-message"></p>
 
-                    <form id="unlock-form" novalidate>
+                    <form id="unlock-form" novalidate hidden>
                         <h2 class="lock-title">Tresor entsperren</h2>
                         <div class="field">
                             <label for="unlock-password">Masterpasswort</label>
