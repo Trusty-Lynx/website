@@ -70,11 +70,21 @@ async function vaultRequest(method, path, body, itemId) {
     });
 }
 
+// Login abgelaufen oder ungültig: alles lokal löschen und zurück zum Login (website.md: 401 unauthorized → Login-Maske)
+function goToLogin() {
+    sessionStorage.clear();
+    window.location.href = "Login.html?abgelaufen";
+}
+
 // Fehler vom Vault lesen. Die X-Request-ID landet in der Konsole, damit findet das Backend die Logzeile sofort.
+// 401 unauthorized heißt hier: Login-Token ungültig oder abgelaufen (das falsche Masterpasswort fängt das Entsperren vorher ab).
 async function readVaultError(response) {
     const data = await response.json().catch(() => ({}));
     console.warn("Vault-Fehler", response.status, data.error, data.reason || "",
         "X-Request-ID:", response.headers.get("X-Request-ID"));
+    if (response.status === 401 && data.error === "unauthorized") {
+        goToLogin();
+    }
     return data.error;
 }
 
@@ -207,7 +217,8 @@ async function showLock() {
         } else if (response.ok) {
             unlockForm.hidden = false;
         } else {
-            lockMessage.textContent = "Tresor gerade nicht erreichbar. Bitte lade die Seite neu.";
+            lockMessage.textContent = vaultErrorMessage(await readVaultError(response),
+                "Tresor gerade nicht erreichbar. Bitte lade die Seite neu.");
         }
     } catch (error) {
         console.error(error);
