@@ -1,0 +1,16 @@
+name: website
+
+services:
+  app:
+    build: .
+    container_name: website
+    ports:
+      - "7490:8080"
+    restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  default:
+    name: trustylynx-net
+    external: true
