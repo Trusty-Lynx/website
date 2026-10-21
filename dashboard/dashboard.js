@@ -372,6 +372,7 @@ unlockForm.addEventListener("submit", async (event) => {
 const vaultList = document.getElementById("vault-list");
 const vaultEmpty = document.getElementById("vault-empty");
 const vaultErrorText = document.getElementById("vault-error");
+const vaultTable = document.getElementById("vault-table");
 const statCount = document.getElementById("stat-count");
 
 let items = [];
@@ -426,26 +427,75 @@ async function loadItems() {
     }
 }
 
+const HIDDEN_PASSWORD = "••••••••";
+
+function textCell(text) {
+    const td = document.createElement("td");
+    td.textContent = text;
+    return td;
+}
+
 function renderItems() {
     vaultList.replaceChildren();
 
     for (const item of items) {
-        const li = document.createElement("li");
-        li.className = "vault-item";
+        const row = document.createElement("tr");
 
-        const title = document.createElement("strong");
-        title.textContent = item.title;
-        const user = document.createElement("span");
-        user.textContent = item.user;
-        const url = document.createElement("span");
-        url.textContent = item.url;
+        const passwordCell = document.createElement("td");
+        const passwordText = document.createElement("span");
+        passwordText.textContent = HIDDEN_PASSWORD;
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "link-button";
+        toggle.textContent = "Anzeigen";
+        toggle.addEventListener("click", () => toggleSecret(item, passwordText, toggle));
+        passwordCell.append(passwordText, toggle);
 
-        li.append(title, user, url);
-        vaultList.append(li);
+        row.append(textCell(item.title), textCell(item.url), textCell(item.user), passwordCell);
+        vaultList.append(row);
     }
 
+    vaultTable.hidden = items.length === 0;
     vaultEmpty.hidden = items.length > 0;
     statCount.textContent = items.length;
+}
+
+// Passwort EINES Eintrags erst auf Klick holen: GET /items/secret (X-Item-Id) → C1 mit dem DEK öffnen
+async function toggleSecret(item, passwordText, toggle) {
+    if (toggle.textContent === "Verbergen") {
+        passwordText.textContent = HIDDEN_PASSWORD;
+        toggle.textContent = "Anzeigen";
+        return;
+    }
+
+    toggle.disabled = true;
+    vaultErrorText.textContent = "";
+    try {
+        const response = await vaultRequest("GET", "/items/secret", null, item.id);
+        if (!response.ok) {
+            const errorCode = await readVaultError(response);
+            if (errorCode === "vault_locked") {
+                lockVault(LOCKED_MESSAGE);
+                return;
+            }
+            vaultErrorText.textContent = errorCode === "not_found"
+                ? "Diesen Eintrag gibt es nicht mehr."
+                : vaultErrorMessage(errorCode, "Passwort konnte nicht geladen werden.");
+            return;
+        }
+        const data = await response.json();
+        // Für die AAD immer die rev aus der Antwort nehmen
+        const secret = await decryptPart(base64ToBytes(data.data), item.id, "s", data.rev);
+        passwordText.textContent = secret.pw;
+        toggle.textContent = "Verbergen";
+    } catch (error) {
+        console.error(error);
+        vaultErrorText.textContent = error.name === "OperationError"
+            ? "Passwort konnte nicht entschlüsselt werden."
+            : "Tresor-Server nicht erreichbar.";
+    } finally {
+        toggle.disabled = false;
+    }
 }
 
 
