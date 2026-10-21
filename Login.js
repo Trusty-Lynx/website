@@ -7,6 +7,11 @@ const togglePasswordButton = document.getElementById("toggle-password");
 const errorText = document.getElementById("auth-error");
 const submitButton = document.getElementById("auth-submit");
 
+// Vom Dashboard hierher geschickt, weil der Login abgelaufen ist
+if (new URLSearchParams(location.search).has("abgelaufen")) {
+    errorText.textContent = "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.";
+}
+
 togglePasswordButton.addEventListener("click", () => {
     const hidden = passwordInput.type === "password";
     if (hidden) {
