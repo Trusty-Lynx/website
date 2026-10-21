@@ -387,9 +387,7 @@ function lockVault(message) {
     items = [];
     renderItems();
 
-    addForm.reset();
-    addForm.hidden = true;
-    addButton.hidden = false;
+    closeItemForm();
     vaultErrorText.textContent = "";
 
     createForm.hidden = true;
@@ -429,6 +427,17 @@ async function loadItems() {
 
 const HIDDEN_PASSWORD = "••••••••";
 
+// Symbole als SVG, feste Texte aus dem Code (keine Nutzerdaten), deshalb ist innerHTML hier in Ordnung
+const COPY_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+    stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="8.5" y="3.5" width="10" height="13" rx="2.2"/>
+    <path d="M6.6 8.3C6.2 8.7 6 9.1 6 9.6V19.5C6 20.3 6.7 21 7.5 21H14.2C15 21 15.7 20.3 15.7 19.5V18.6"/>
+</svg>`;
+const CHECK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M5 12.5L10 17.5L19 7"/>
+</svg>`;
+
 function textCell(text) {
     const td = document.createElement("td");
     td.textContent = text;
@@ -441,17 +450,37 @@ function renderItems() {
     for (const item of items) {
         const row = document.createElement("tr");
 
+        // Passwort: Punkte, daneben das Kopier-Symbol, rechts "Anzeigen"
         const passwordCell = document.createElement("td");
         const passwordText = document.createElement("span");
         passwordText.textContent = HIDDEN_PASSWORD;
+
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "icon-button";
+        copy.innerHTML = COPY_ICON;
+        copy.title = "Passwort kopieren";
+        copy.setAttribute("aria-label", "Passwort kopieren");
+        copy.addEventListener("click", () => copySecret(item, copy));
+
         const toggle = document.createElement("button");
         toggle.type = "button";
         toggle.className = "link-button";
         toggle.textContent = "Anzeigen";
         toggle.addEventListener("click", () => toggleSecret(item, passwordText, toggle));
-        passwordCell.append(passwordText, toggle);
 
-        row.append(textCell(item.title), textCell(item.url), textCell(item.user), passwordCell);
+        passwordCell.append(passwordText, copy, toggle);
+
+        // Bearbeiten
+        const editCell = document.createElement("td");
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.className = "link-button";
+        edit.textContent = "Bearbeiten";
+        edit.addEventListener("click", () => openItemForm(item));
+        editCell.append(edit);
+
+        row.append(textCell(item.title), textCell(item.url), textCell(item.user), passwordCell, editCell);
         vaultList.append(row);
     }
 
@@ -460,7 +489,36 @@ function renderItems() {
     statCount.textContent = items.length;
 }
 
-// Passwort EINES Eintrags erst auf Klick holen: GET /items/secret (X-Item-Id) → C1 mit dem DEK öffnen
+// Passwort EINES Eintrags vom Vault holen: GET /items/secret (X-Item-Id) → C1 mit dem DEK öffnen.
+// Liefert das Passwort oder null (die Fehlermeldung steht dann schon in der Tresor-Fläche).
+async function fetchSecret(item) {
+    vaultErrorText.textContent = "";
+    try {
+        const response = await vaultRequest("GET", "/items/secret", null, item.id);
+        if (!response.ok) {
+            const errorCode = await readVaultError(response);
+            if (errorCode === "vault_locked") {
+                lockVault(LOCKED_MESSAGE);
+                return null;
+            }
+            vaultErrorText.textContent = errorCode === "not_found"
+                ? "Diesen Eintrag gibt es nicht mehr."
+                : vaultErrorMessage(errorCode, "Passwort konnte nicht geladen werden.");
+            return null;
+        }
+        const data = await response.json();
+        // Für die AAD immer die rev aus der Antwort nehmen
+        const secret = await decryptPart(base64ToBytes(data.data), item.id, "s", data.rev);
+        return secret.pw;
+    } catch (error) {
+        console.error(error);
+        vaultErrorText.textContent = error.name === "OperationError"
+            ? "Passwort konnte nicht entschlüsselt werden."
+            : "Tresor-Server nicht erreichbar.";
+        return null;
+    }
+}
+
 async function toggleSecret(item, passwordText, toggle) {
     if (toggle.textContent === "Verbergen") {
         passwordText.textContent = HIDDEN_PASSWORD;
@@ -469,61 +527,104 @@ async function toggleSecret(item, passwordText, toggle) {
     }
 
     toggle.disabled = true;
-    vaultErrorText.textContent = "";
-    try {
-        const response = await vaultRequest("GET", "/items/secret", null, item.id);
-        if (!response.ok) {
-            const errorCode = await readVaultError(response);
-            if (errorCode === "vault_locked") {
-                lockVault(LOCKED_MESSAGE);
-                return;
-            }
-            vaultErrorText.textContent = errorCode === "not_found"
-                ? "Diesen Eintrag gibt es nicht mehr."
-                : vaultErrorMessage(errorCode, "Passwort konnte nicht geladen werden.");
-            return;
-        }
-        const data = await response.json();
-        // Für die AAD immer die rev aus der Antwort nehmen
-        const secret = await decryptPart(base64ToBytes(data.data), item.id, "s", data.rev);
-        passwordText.textContent = secret.pw;
+    const password = await fetchSecret(item);
+    toggle.disabled = false;
+    if (password !== null) {
+        passwordText.textContent = password;
         toggle.textContent = "Verbergen";
+    }
+}
+
+// Passwort in die Zwischenablage, nach 30 s wieder leeren
+async function copySecret(item, copy) {
+    copy.disabled = true;
+    const password = await fetchSecret(item);
+    copy.disabled = false;
+    if (password === null) {
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(password);
+        copy.innerHTML = CHECK_ICON;
+        setTimeout(() => {
+            copy.innerHTML = COPY_ICON;
+        }, 1500);
+        setTimeout(() => {
+            navigator.clipboard.writeText("").catch(() => {});
+        }, 30000);
     } catch (error) {
         console.error(error);
-        vaultErrorText.textContent = error.name === "OperationError"
-            ? "Passwort konnte nicht entschlüsselt werden."
-            : "Tresor-Server nicht erreichbar.";
-    } finally {
-        toggle.disabled = false;
+        vaultErrorText.textContent = "Kopieren nicht möglich.";
     }
 }
 
 
+// ---------- Formular: Passwort hinzufügen bzw. Eintrag bearbeiten ----------
+
 const addButton = document.getElementById("add-button");
 const addForm = document.getElementById("add-form");
+const addFormTitle = document.getElementById("add-form-title");
 const addError = document.getElementById("add-error");
+const deleteButton = document.getElementById("add-delete");
+const titleInput = document.getElementById("add-title");
+const urlInput = document.getElementById("add-url");
+const userInput = document.getElementById("add-user");
+const passwordInput = document.getElementById("add-password");
 
-addButton.addEventListener("click", () => {
+// null = neuer Eintrag, sonst der Eintrag, der gerade bearbeitet wird
+let editingItem = null;
+
+async function openItemForm(item) {
+    addForm.reset();
+    addError.textContent = "";
+    editingItem = item || null;
+
+    addFormTitle.textContent = item ? "Eintrag bearbeiten" : "Passwort hinzufügen";
+    deleteButton.hidden = !item;
     addForm.hidden = false;
     addButton.hidden = true;
-    document.getElementById("add-title").focus();
-});
+    // Während das Formular offen ist, nur das Formular zeigen, nicht die Tabelle darunter
+    vaultTable.hidden = true;
+    vaultEmpty.hidden = true;
 
-document.getElementById("add-cancel").addEventListener("click", () => {
+    if (item) {
+        titleInput.value = item.title;
+        urlInput.value = item.url;
+        userInput.value = item.user;
+        // Das Passwort kommt nur auf diesen Klick vom Vault, wie bei "Anzeigen"
+        const password = await fetchSecret(item);
+        if (password === null) {
+            closeItemForm();
+            return;
+        }
+        passwordInput.value = password;
+    }
+    titleInput.focus();
+}
+
+function closeItemForm() {
     addForm.reset();
     addError.textContent = "";
     addForm.hidden = true;
     addButton.hidden = false;
-});
+    deleteButton.hidden = true;
+    editingItem = null;
+    vaultTable.hidden = items.length === 0;
+    vaultEmpty.hidden = items.length > 0;
+}
+
+addButton.addEventListener("click", () => openItemForm(null));
+
+document.getElementById("add-cancel").addEventListener("click", closeItemForm);
 
 addForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     addError.textContent = "";
 
-    const title = document.getElementById("add-title").value.trim();
-    const url = document.getElementById("add-url").value.trim();
-    const user = document.getElementById("add-user").value.trim();
-    const passwordInput = document.getElementById("add-password");
+    const title = titleInput.value.trim();
+    const url = urlInput.value.trim();
+    const user = userInput.value.trim();
 
     if (!title || !passwordInput.value) {
         addError.textContent = "Bitte mindestens Titel und Passwort eingeben.";
@@ -534,8 +635,9 @@ addForm.addEventListener("submit", async (event) => {
     button.disabled = true;
 
     try {
-        const itemId = crypto.randomUUID();
-        const rev = 1;
+        // Neu: eigene itemId und rev 1. Ändern: gleiche itemId, rev + 1, beide Teile neu verschlüsseln.
+        const itemId = editingItem ? editingItem.id : crypto.randomUUID();
+        const rev = editingItem ? editingItem.rev + 1 : 1;
 
         const head = await encryptPart({ title: title, url: url, user: user }, itemId, "h", rev);
         const secret = await encryptPart({ pw: passwordInput.value }, itemId, "s", rev);
@@ -546,6 +648,14 @@ addForm.addEventListener("submit", async (event) => {
             secret: bytesToBase64(secret),
         }, itemId);
 
+        if (response.status === 409) {
+            // rev_conflict: ein anderes Gerät war schneller. Nie still überschreiben, sondern neu laden.
+            await readVaultError(response);
+            closeItemForm();
+            await loadItems();
+            vaultErrorText.textContent = "Der Eintrag wurde inzwischen woanders geändert. Bitte prüfe ihn und bearbeite ihn erneut.";
+            return;
+        }
         if (!response.ok) {
             const errorCode = await readVaultError(response);
             if (errorCode === "vault_locked") {
@@ -556,16 +666,84 @@ addForm.addEventListener("submit", async (event) => {
             return;
         }
 
-        items.push({ id: itemId, rev: rev, title: title, url: url, user: user });
+        const saved = { id: itemId, rev: rev, title: title, url: url, user: user };
+        if (editingItem) {
+            items = items.map((other) => (other.id === itemId ? saved : other));
+        } else {
+            items.push(saved);
+        }
         renderItems();
-
-        addForm.reset();
-        addForm.hidden = true;
-        addButton.hidden = false;
+        closeItemForm();
     } catch (error) {
         console.error(error);
         addError.textContent = "Tresor-Server nicht erreichbar.";
     } finally {
         button.disabled = false;
     }
+});
+
+// Eigenes Fenster statt confirm(): liefert true bei "Löschen", false bei "Abbrechen" oder Esc
+const deleteDialog = document.getElementById("delete-dialog");
+
+function confirmDelete() {
+    return new Promise((resolve) => {
+        document.getElementById("delete-confirm").onclick = () => {
+            deleteDialog.close();
+            resolve(true);
+        };
+        document.getElementById("delete-cancel").onclick = () => {
+            deleteDialog.close();
+            resolve(false);
+        };
+        deleteDialog.oncancel = () => resolve(false);
+        deleteDialog.showModal();
+    });
+}
+
+deleteButton.addEventListener("click", async () => {
+    if (!editingItem) {
+        return;
+    }
+    if (!(await confirmDelete())) {
+        return;
+    }
+
+    deleteButton.disabled = true;
+    try {
+        const itemId = editingItem.id;
+        const response = await vaultRequest("DELETE", "/items", null, itemId);
+
+        if (!response.ok && response.status !== 404) {
+            const errorCode = await readVaultError(response);
+            if (errorCode === "vault_locked") {
+                lockVault(LOCKED_MESSAGE);
+                return;
+            }
+            addError.textContent = vaultErrorMessage(errorCode, "Eintrag konnte nicht gelöscht werden.");
+            return;
+        }
+
+        // 204 gelöscht, 404 gab es schon nicht mehr: in beiden Fällen aus der Liste nehmen
+        items = items.filter((other) => other.id !== itemId);
+        renderItems();
+        closeItemForm();
+    } catch (error) {
+        console.error(error);
+        addError.textContent = "Tresor-Server nicht erreichbar.";
+    } finally {
+        deleteButton.disabled = false;
+    }
+});
+
+
+// ---------- Tresor sperren ----------
+
+document.getElementById("lock-button").addEventListener("click", async () => {
+    try {
+        // 401 vault_locked heißt nur "war schon gesperrt", lokal wird trotzdem aufgeräumt
+        await vaultRequest("POST", "/vault/lock");
+    } catch (error) {
+        console.error(error);
+    }
+    lockVault("Tresor gesperrt.");
 });

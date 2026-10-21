@@ -40,8 +40,8 @@
                 </article>
 
                 <article class="card">
-                    <h2 class="card-title">Sicherheitsstufe</h2>
-                    <p class="card-value" id="stat-level">–</p>
+                    <h2 class="card-title">Tresor</h2>
+                    <button class="btn primary btn-inline" id="lock-button" type="button">Tresor sperren</button>
                 </article>
 
                 <article class="card">
@@ -59,6 +59,7 @@
                 <p class="error" id="vault-error" role="alert"></p>
 
                 <form id="add-form" class="add-form" novalidate hidden>
+                    <h3 class="form-title" id="add-form-title">Passwort hinzufügen</h3>
                     <div class="field">
                         <label for="add-title">Titel</label>
                         <input id="add-title" type="text" required>
@@ -78,6 +79,7 @@
                     <p class="error" id="add-error" role="alert"></p>
                     <button class="btn primary btn-inline" type="submit">Speichern</button>
                     <button class="btn btn-inline" id="add-cancel" type="button">Abbrechen</button>
+                    <button class="btn btn-inline btn-danger" id="add-delete" type="button" hidden>Löschen</button>
                 </form>
 
                 <p class="vault-empty" id="vault-empty">Noch keine Einträge vorhanden.</p>
@@ -88,6 +90,7 @@
                             <th>Website</th>
                             <th>Benutzername</th>
                             <th>Passwort</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="vault-list"></tbody>
@@ -133,6 +136,13 @@
         </main>
 
     </div>
+
+    <dialog class="dialog" id="delete-dialog">
+        <h3 class="form-title">Eintrag wirklich löschen?</h3>
+        <p class="dialog-text">Das kann nicht rückgängig gemacht werden.</p>
+        <button class="btn btn-inline btn-delete" id="delete-confirm" type="button">Löschen</button>
+        <button class="btn btn-inline" id="delete-cancel" type="button">Abbrechen</button>
+    </dialog>
 
     <script src="https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/argon2.umd.min.js"></script>
     <script src="common.js"></script>
