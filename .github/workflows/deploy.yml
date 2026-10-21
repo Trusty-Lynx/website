@@ -1,0 +1,33 @@
+name: Deploy
+
+on:
+  push:
+    branches: [deploy]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Trust server host key
+        run: ssh-keyscan -H 152.53.183.40 >> ~/.ssh/known_hosts
+
+      - name: Sync files
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            ./ trustylynx@152.53.183.40:/opt/trustylynx/website/
+
+      - name: Build & restart
+        run: |
+          ssh trustylynx@152.53.183.40 '
+            cd /opt/trustylynx/website &&
+            docker compose build &&
+            docker compose up -d
+          '
