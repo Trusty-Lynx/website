@@ -30,6 +30,10 @@ body {
     display: flex;
     flex-direction: column;
     padding: 20px 16px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    align-self: start;
 }
 
 .topbar {
