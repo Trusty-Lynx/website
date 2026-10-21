@@ -33,7 +33,7 @@ const lockMessage = document.getElementById("lock-message");
 const unlockForm = document.getElementById("unlock-form");
 const createForm = document.getElementById("create-form");
 
-// Platzhalter-Session für den Vault (X-Session-Id), bis das Gateway sie aus dem Login-Token setzt
+
 function getVaultSessionId() {
     let id = sessionStorage.getItem("vaultSessionId");
     if (!id) {
@@ -43,12 +43,12 @@ function getVaultSessionId() {
     return id;
 }
 
-async function vaultRequest(method, path, body) {
+async function vaultRequest(method, path, body, itemId) {
     const bodyText = body ? JSON.stringify(body) : "";
 
     const headers = {
         "Authorization": "Bearer " + loginToken,
-        // Platzhalter, solange es kein Gateway gibt (Vault-Doku von Aaron)
+        // Platzhalter, solange es kein Gateway gibt 
         "X-User-Id": sessionStorage.getItem("userId"),
         "X-Session-Id": getVaultSessionId(),
     };
@@ -57,6 +57,10 @@ async function vaultRequest(method, path, body) {
     }
     if (vaultToken) {
         headers["X-Vault-Token"] = vaultToken;
+    }
+   
+    if (itemId) {
+        headers["X-Item-Id"] = itemId;
     }
 
     return fetch(VAULT_BASE + path, {
@@ -119,7 +123,7 @@ async function unwrapDek(wdek, kekBytes) {
     return new Uint8Array(decrypted);
 }
 
-// Padding entfernen (ISO/IEC 7816-4): von hinten alle 00 überspringen, dann muss 80 kommen
+
 function unpad(block) {
     let end = block.length - 1;
     while (end >= 0 && block[end] === 0x00) {
@@ -131,13 +135,12 @@ function unpad(block) {
     return block.slice(0, end);
 }
 
-// AAD für Kopf (h) oder Geheimnis (s) eines Eintrags: TL-L1|{userId}|{itemId}|{teil}|{rev}
+
 function itemAad(itemId, part, rev) {
     const userId = sessionStorage.getItem("userId");
     return new TextEncoder().encode(`TL-L1|${userId}|${itemId}|${part}|${rev}`);
 }
 
-// C1 = 01 ‖ 01 ‖ n1 (12 B) ‖ AES-256-GCM(DEK, n1, Padding-Block, aad)
 async function decryptPart(c1, itemId, part, rev) {
     const decrypted = await crypto.subtle.decrypt(
         { name: "AES-GCM", iv: c1.slice(2, 14), additionalData: itemAad(itemId, part, rev) },
@@ -146,6 +149,35 @@ async function decryptPart(c1, itemId, part, rev) {
     );
     const json = new TextDecoder().decode(unpad(new Uint8Array(decrypted)));
     return JSON.parse(json);
+}
+
+
+function pad(bytes) {
+    let size = 32;
+    while (size < bytes.length + 1) {
+        size *= 2;
+    }
+    const block = new Uint8Array(size);
+    block.set(bytes, 0);
+    block[bytes.length] = 0x80;
+    return block;
+}
+
+
+async function encryptPart(value, itemId, part, rev, nonce = crypto.getRandomValues(new Uint8Array(12))) {
+    const block = pad(new TextEncoder().encode(JSON.stringify(value)));
+    const encrypted = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: nonce, additionalData: itemAad(itemId, part, rev) },
+        dek,
+        block
+    );
+    block.fill(0);
+
+    const c1 = new Uint8Array(14 + encrypted.byteLength);
+    c1.set([1, 1], 0);
+    c1.set(nonce, 2);
+    c1.set(new Uint8Array(encrypted), 14);
+    return c1;
 }
 
 async function showLock() {
@@ -202,7 +234,6 @@ createForm.addEventListener("submit", async (event) => {
         const dekBytes = crypto.getRandomValues(new Uint8Array(32));
         const wdek = await wrapDek(dekBytes, keys.kek);
 
-        // securityLevel lässt der Vault im Moment noch nicht zu (400), deshalb nicht mitschicken
         const response = await vaultRequest("POST", "/vault", {
             salt: bytesToBase64(saltBytes),
             kdf: KDF,
