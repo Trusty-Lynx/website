@@ -394,3 +394,75 @@ function renderItems() {
     vaultEmpty.hidden = items.length > 0;
     statCount.textContent = items.length;
 }
+
+
+const addButton = document.getElementById("add-button");
+const addForm = document.getElementById("add-form");
+const addError = document.getElementById("add-error");
+
+addButton.addEventListener("click", () => {
+    addForm.hidden = false;
+    addButton.hidden = true;
+    document.getElementById("add-title").focus();
+});
+
+document.getElementById("add-cancel").addEventListener("click", () => {
+    addForm.reset();
+    addError.textContent = "";
+    addForm.hidden = true;
+    addButton.hidden = false;
+});
+
+addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    addError.textContent = "";
+
+    const title = document.getElementById("add-title").value.trim();
+    const url = document.getElementById("add-url").value.trim();
+    const user = document.getElementById("add-user").value.trim();
+    const passwordInput = document.getElementById("add-password");
+
+    if (!title || !passwordInput.value) {
+        addError.textContent = "Bitte mindestens Titel und Passwort eingeben.";
+        return;
+    }
+
+    const button = addForm.querySelector("button[type=submit]");
+    button.disabled = true;
+
+    try {
+        const itemId = crypto.randomUUID();
+        const rev = 1;
+
+        const head = await encryptPart({ title: title, url: url, user: user }, itemId, "h", rev);
+        const secret = await encryptPart({ pw: passwordInput.value }, itemId, "s", rev);
+
+        const response = await vaultRequest("PUT", "/items", {
+            rev: rev,
+            head: bytesToBase64(head),
+            secret: bytesToBase64(secret),
+        }, itemId);
+
+        if (response.status === 401) {
+            lock.hidden = false;
+            unlockForm.hidden = false;
+            return;
+        }
+        if (!response.ok) {
+            addError.textContent = "Eintrag konnte nicht gespeichert werden.";
+            return;
+        }
+
+        items.push({ id: itemId, rev: rev, title: title, url: url, user: user });
+        renderItems();
+
+        addForm.reset();
+        addForm.hidden = true;
+        addButton.hidden = false;
+    } catch (error) {
+        console.error(error);
+        addError.textContent = "Tresor-Server nicht erreichbar.";
+    } finally {
+        button.disabled = false;
+    }
+});

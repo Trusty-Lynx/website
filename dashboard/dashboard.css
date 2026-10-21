@@ -267,3 +267,26 @@ select {
     border-bottom: 1px solid #e5e7eb;
     font-size: 14px;
 }
+
+
+.vault-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.vault-header .vault-title {
+    margin: 0;
+}
+
+.btn-inline {
+    width: auto;
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+.add-form {
+    max-width: 380px;
+    margin-bottom: 24px;
+}
