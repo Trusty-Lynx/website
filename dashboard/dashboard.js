@@ -70,6 +70,24 @@ async function vaultRequest(method, path, body, itemId) {
     });
 }
 
+// Fehler vom Vault lesen. Die X-Request-ID landet in der Konsole, damit findet das Backend die Logzeile sofort.
+async function readVaultError(response) {
+    const data = await response.json().catch(() => ({}));
+    console.warn("Vault-Fehler", response.status, data.error, data.reason || "",
+        "X-Request-ID:", response.headers.get("X-Request-ID"));
+    return data.error;
+}
+
+function vaultErrorMessage(errorCode, fallback) {
+    if (errorCode === "upstream_error") {
+        return "Gerade nicht möglich. Bitte versuche es später erneut.";
+    }
+    if (errorCode === "integrity_error") {
+        return "Achtung: Daten auf dem Server wurden verändert. Bitte melde das dem Support.";
+    }
+    return fallback;
+}
+
 async function deriveVaultKeys(password, saltBytes, kdf) {
     const mk = await hashwasm.argon2id({
         password: password,
@@ -249,7 +267,7 @@ createForm.addEventListener("submit", async (event) => {
             return;
         }
         if (!response.ok) {
-            createError.textContent = "Tresor konnte nicht erstellt werden.";
+            createError.textContent = vaultErrorMessage(await readVaultError(response), "Tresor konnte nicht erstellt werden.");
             return;
         }
 
@@ -290,7 +308,7 @@ unlockForm.addEventListener("submit", async (event) => {
             return;
         }
         if (!paramsResponse.ok) {
-            unlockError.textContent = "Tresor gerade nicht erreichbar.";
+            unlockError.textContent = vaultErrorMessage(await readVaultError(paramsResponse), "Tresor gerade nicht erreichbar.");
             return;
         }
         const params = await paramsResponse.json();
@@ -315,12 +333,11 @@ unlockForm.addEventListener("submit", async (event) => {
             unlockError.textContent = `Zu viele Fehlversuche. Bitte ${seconds} Sekunden warten.`;
             return;
         }
-        if (response.status === 500) {
-            unlockError.textContent = "Der Tresor konnte nicht geöffnet werden.";
-            return;
-        }
         if (!response.ok) {
-            unlockError.textContent = "Tresor konnte nicht entsperrt werden.";
+            const errorCode = await readVaultError(response);
+            unlockError.textContent = errorCode === "integrity_error"
+                ? "Der Tresor konnte nicht geöffnet werden."
+                : vaultErrorMessage(errorCode, "Tresor konnte nicht entsperrt werden.");
             return;
         }
 
@@ -354,23 +371,59 @@ unlockForm.addEventListener("submit", async (event) => {
 
 const vaultList = document.getElementById("vault-list");
 const vaultEmpty = document.getElementById("vault-empty");
+const vaultErrorText = document.getElementById("vault-error");
 const statCount = document.getElementById("stat-count");
 
 let items = [];
 
-async function loadItems() {
-    const response = await vaultRequest("GET", "/items");
-    if (!response.ok) {
-        throw new Error("Einträge konnten nicht geladen werden: " + response.status);
-    }
-    const data = await response.json();
+const LOCKED_MESSAGE = "Der Tresor wurde gesperrt. Bitte gib dein Masterpasswort erneut ein.";
 
+// Tresor lokal sperren (bei 401 vault_locked und später beim Sperren-Button):
+// DEK und Tresor-Token verwerfen, Liste leeren, Milchglas mit "Tresor entsperren" zeigen.
+function lockVault(message) {
+    vaultToken = null;
+    dek = null;
     items = [];
-    for (const item of data.items) {
-        const head = await decryptPart(base64ToBytes(item.head), item.id, "h", item.rev);
-        items.push({ id: item.id, rev: item.rev, title: head.title, url: head.url, user: head.user });
-    }
     renderItems();
+
+    addForm.reset();
+    addForm.hidden = true;
+    addButton.hidden = false;
+    vaultErrorText.textContent = "";
+
+    createForm.hidden = true;
+    unlockForm.hidden = false;
+    unlockError.textContent = message || "";
+    lock.hidden = false;
+}
+
+async function loadItems() {
+    vaultErrorText.textContent = "";
+    try {
+        const response = await vaultRequest("GET", "/items");
+        if (!response.ok) {
+            const errorCode = await readVaultError(response);
+            if (errorCode === "vault_locked") {
+                lockVault(LOCKED_MESSAGE);
+                return;
+            }
+            vaultErrorText.textContent = vaultErrorMessage(errorCode, "Einträge konnten nicht geladen werden.");
+            return;
+        }
+        const data = await response.json();
+
+        items = [];
+        for (const item of data.items) {
+            const head = await decryptPart(base64ToBytes(item.head), item.id, "h", item.rev);
+            items.push({ id: item.id, rev: item.rev, title: head.title, url: head.url, user: head.user });
+        }
+        renderItems();
+    } catch (error) {
+        console.error(error);
+        vaultErrorText.textContent = error.name === "OperationError"
+            ? "Ein Eintrag konnte nicht entschlüsselt werden."
+            : "Tresor-Server nicht erreichbar.";
+    }
 }
 
 function renderItems() {
@@ -443,13 +496,13 @@ addForm.addEventListener("submit", async (event) => {
             secret: bytesToBase64(secret),
         }, itemId);
 
-        if (response.status === 401) {
-            lock.hidden = false;
-            unlockForm.hidden = false;
-            return;
-        }
         if (!response.ok) {
-            addError.textContent = "Eintrag konnte nicht gespeichert werden.";
+            const errorCode = await readVaultError(response);
+            if (errorCode === "vault_locked") {
+                lockVault(LOCKED_MESSAGE);
+                return;
+            }
+            addError.textContent = vaultErrorMessage(errorCode, "Eintrag konnte nicht gespeichert werden.");
             return;
         }
 
