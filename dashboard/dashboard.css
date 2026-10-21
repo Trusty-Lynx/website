@@ -253,3 +253,17 @@ select {
     width: auto;
     margin-top: 2px;
 }
+
+.vault-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.vault-item {
+    display: flex;
+    gap: 24px;
+    padding: 12px 0;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 14px;
+}

@@ -119,6 +119,35 @@ async function unwrapDek(wdek, kekBytes) {
     return new Uint8Array(decrypted);
 }
 
+// Padding entfernen (ISO/IEC 7816-4): von hinten alle 00 überspringen, dann muss 80 kommen
+function unpad(block) {
+    let end = block.length - 1;
+    while (end >= 0 && block[end] === 0x00) {
+        end--;
+    }
+    if (block[end] !== 0x80) {
+        throw new Error("Ungültiges Padding");
+    }
+    return block.slice(0, end);
+}
+
+// AAD für Kopf (h) oder Geheimnis (s) eines Eintrags: TL-L1|{userId}|{itemId}|{teil}|{rev}
+function itemAad(itemId, part, rev) {
+    const userId = sessionStorage.getItem("userId");
+    return new TextEncoder().encode(`TL-L1|${userId}|${itemId}|${part}|${rev}`);
+}
+
+// C1 = 01 ‖ 01 ‖ n1 (12 B) ‖ AES-256-GCM(DEK, n1, Padding-Block, aad)
+async function decryptPart(c1, itemId, part, rev) {
+    const decrypted = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: c1.slice(2, 14), additionalData: itemAad(itemId, part, rev) },
+        dek,
+        c1.slice(14)
+    );
+    const json = new TextDecoder().decode(unpad(new Uint8Array(decrypted)));
+    return JSON.parse(json);
+}
+
 async function showLock() {
     try {
         const response = await vaultRequest("GET", "/vault/params");
@@ -198,6 +227,7 @@ createForm.addEventListener("submit", async (event) => {
         dek = await crypto.subtle.importKey("raw", dekBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
         dekBytes.fill(0);
         lock.hidden = true;
+        await loadItems();
     } catch (error) {
         console.error(error);
         createError.textContent = "Tresor-Server nicht erreichbar.";
@@ -277,6 +307,7 @@ unlockForm.addEventListener("submit", async (event) => {
         dekBytes.fill(0);
         passwordInput.value = "";
         lock.hidden = true;
+        await loadItems();
     } catch (error) {
         console.error(error);
         if (error.name === "OperationError") {
@@ -288,3 +319,47 @@ unlockForm.addEventListener("submit", async (event) => {
         button.disabled = false;
     }
 });
+
+
+const vaultList = document.getElementById("vault-list");
+const vaultEmpty = document.getElementById("vault-empty");
+const statCount = document.getElementById("stat-count");
+
+let items = [];
+
+async function loadItems() {
+    const response = await vaultRequest("GET", "/items");
+    if (!response.ok) {
+        throw new Error("Einträge konnten nicht geladen werden: " + response.status);
+    }
+    const data = await response.json();
+
+    items = [];
+    for (const item of data.items) {
+        const head = await decryptPart(base64ToBytes(item.head), item.id, "h", item.rev);
+        items.push({ id: item.id, rev: item.rev, title: head.title, url: head.url, user: head.user });
+    }
+    renderItems();
+}
+
+function renderItems() {
+    vaultList.replaceChildren();
+
+    for (const item of items) {
+        const li = document.createElement("li");
+        li.className = "vault-item";
+
+        const title = document.createElement("strong");
+        title.textContent = item.title;
+        const user = document.createElement("span");
+        user.textContent = item.user;
+        const url = document.createElement("span");
+        url.textContent = item.url;
+
+        li.append(title, user, url);
+        vaultList.append(li);
+    }
+
+    vaultEmpty.hidden = items.length > 0;
+    statCount.textContent = items.length;
+}
