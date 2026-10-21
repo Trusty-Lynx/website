@@ -51,8 +51,47 @@
             </section>
 
             <section class="card vault">
-                <h2 class="vault-title">Tresor</h2>
+                                <div class="vault-header">
+                    <h2 class="vault-title">Tresor</h2>
+                    <button class="btn primary btn-inline" id="add-button" type="button">Passwort hinzufügen</button>
+                </div>
+
+                <p class="error" id="vault-error" role="alert"></p>
+
+                <form id="add-form" class="add-form" novalidate hidden>
+                    <div class="field">
+                        <label for="add-title">Titel</label>
+                        <input id="add-title" type="text" required>
+                    </div>
+                    <div class="field">
+                        <label for="add-url">Website</label>
+                        <input id="add-url" type="text" placeholder="z. B. google.com">
+                    </div>
+                    <div class="field">
+                        <label for="add-user">Benutzername</label>
+                        <input id="add-user" type="text" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="add-password">Passwort</label>
+                        <input id="add-password" type="password" autocomplete="new-password" required>
+                    </div>
+                    <p class="error" id="add-error" role="alert"></p>
+                    <button class="btn primary btn-inline" type="submit">Speichern</button>
+                    <button class="btn btn-inline" id="add-cancel" type="button">Abbrechen</button>
+                </form>
+
                 <p class="vault-empty" id="vault-empty">Noch keine Einträge vorhanden.</p>
+                <table class="vault-table" id="vault-table" hidden>
+                    <thead>
+                        <tr>
+                            <th>Titel</th>
+                            <th>Website</th>
+                            <th>Benutzername</th>
+                            <th>Passwort</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vault-list"></tbody>
+                </table>
             </section>
 
             <div class="lock" id="lock">

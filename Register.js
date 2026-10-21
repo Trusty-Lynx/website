@@ -85,6 +85,8 @@ form.addEventListener("submit", async (event) => {
         const data = await response.json();
         sessionStorage.setItem("loginToken", data.token);
         sessionStorage.setItem("userId", data.userId);
+        // Neue Platzhalter-Session für den Vault: ein neuer Login macht den alten Tresor-Token ungültig
+        sessionStorage.setItem("vaultSessionId", crypto.randomUUID());
         passwordInput.value = "";
         passwordConfirmInput.value = "";
         window.location.href = "Dashboard.html";
