@@ -70,14 +70,13 @@ async function vaultRequest(method, path, body, itemId) {
     });
 }
 
-// Login abgelaufen oder ungültig: alles lokal löschen und zurück zum Login (website.md: 401 unauthorized → Login-Maske)
+
 function goToLogin() {
     sessionStorage.clear();
     window.location.href = "Login.html?abgelaufen";
 }
 
-// Fehler vom Vault lesen. Die X-Request-ID landet in der Konsole, damit findet das Backend die Logzeile sofort.
-// 401 unauthorized heißt hier: Login-Token ungültig oder abgelaufen (das falsche Masterpasswort fängt das Entsperren vorher ab).
+
 async function readVaultError(response) {
     const data = await response.json().catch(() => ({}));
     console.warn("Vault-Fehler", response.status, data.error, data.reason || "",
@@ -287,6 +286,7 @@ createForm.addEventListener("submit", async (event) => {
         dek = await crypto.subtle.importKey("raw", dekBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
         dekBytes.fill(0);
         lock.hidden = true;
+        resetAutoLock();
         await loadItems();
     } catch (error) {
         console.error(error);
@@ -366,6 +366,7 @@ unlockForm.addEventListener("submit", async (event) => {
         dekBytes.fill(0);
         passwordInput.value = "";
         lock.hidden = true;
+        resetAutoLock();
         await loadItems();
     } catch (error) {
         console.error(error);
@@ -386,13 +387,25 @@ const vaultErrorText = document.getElementById("vault-error");
 const vaultTable = document.getElementById("vault-table");
 const statCount = document.getElementById("stat-count");
 
+
+function showLastLogin() {
+    const previous = sessionStorage.getItem("previousLogin");
+    document.getElementById("stat-last-login").textContent = previous
+        ? new Date(Number(previous)).toLocaleString("de-DE", {
+            day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+        }) + " Uhr"
+        : "Erster Login";
+}
+
+showLastLogin();
+
 let items = [];
 
 const LOCKED_MESSAGE = "Der Tresor wurde gesperrt. Bitte gib dein Masterpasswort erneut ein.";
 
-// Tresor lokal sperren (bei 401 vault_locked und später beim Sperren-Button):
-// DEK und Tresor-Token verwerfen, Liste leeren, Milchglas mit "Tresor entsperren" zeigen.
+
 function lockVault(message) {
+    clearTimeout(autoLockTimer);
     vaultToken = null;
     dek = null;
     items = [];
@@ -438,7 +451,7 @@ async function loadItems() {
 
 const HIDDEN_PASSWORD = "••••••••";
 
-// Symbole als SVG, feste Texte aus dem Code (keine Nutzerdaten), deshalb ist innerHTML hier in Ordnung
+
 const COPY_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <rect x="8.5" y="3.5" width="10" height="13" rx="2.2"/>
@@ -482,7 +495,6 @@ function renderItems() {
 
         passwordCell.append(passwordText, copy, toggle);
 
-        // Bearbeiten
         const editCell = document.createElement("td");
         const edit = document.createElement("button");
         edit.type = "button";
@@ -500,8 +512,7 @@ function renderItems() {
     statCount.textContent = items.length;
 }
 
-// Passwort EINES Eintrags vom Vault holen: GET /items/secret (X-Item-Id) → C1 mit dem DEK öffnen.
-// Liefert das Passwort oder null (die Fehlermeldung steht dann schon in der Tresor-Fläche).
+
 async function fetchSecret(item) {
     vaultErrorText.textContent = "";
     try {
@@ -518,7 +529,6 @@ async function fetchSecret(item) {
             return null;
         }
         const data = await response.json();
-        // Für die AAD immer die rev aus der Antwort nehmen
         const secret = await decryptPart(base64ToBytes(data.data), item.id, "s", data.rev);
         return secret.pw;
     } catch (error) {
@@ -546,7 +556,7 @@ async function toggleSecret(item, passwordText, toggle) {
     }
 }
 
-// Passwort in die Zwischenablage, nach 30 s wieder leeren
+// Passwort in die Zwischenablage, nach 30 s wieder löschen
 async function copySecret(item, copy) {
     copy.disabled = true;
     const password = await fetchSecret(item);
@@ -646,7 +656,7 @@ addForm.addEventListener("submit", async (event) => {
     button.disabled = true;
 
     try {
-        // Neu: eigene itemId und rev 1. Ändern: gleiche itemId, rev + 1, beide Teile neu verschlüsseln.
+        
         const itemId = editingItem ? editingItem.id : crypto.randomUUID();
         const rev = editingItem ? editingItem.rev + 1 : 1;
 
@@ -660,8 +670,7 @@ addForm.addEventListener("submit", async (event) => {
         }, itemId);
 
         if (response.status === 409) {
-            // rev_conflict: ein anderes Gerät war schneller. Nie still überschreiben, sondern neu laden.
-            await readVaultError(response);
+            
             closeItemForm();
             await loadItems();
             vaultErrorText.textContent = "Der Eintrag wurde inzwischen woanders geändert. Bitte prüfe ihn und bearbeite ihn erneut.";
@@ -734,7 +743,7 @@ deleteButton.addEventListener("click", async () => {
             return;
         }
 
-        // 204 gelöscht, 404 gab es schon nicht mehr: in beiden Fällen aus der Liste nehmen
+        
         items = items.filter((other) => other.id !== itemId);
         renderItems();
         closeItemForm();
@@ -749,12 +758,29 @@ deleteButton.addEventListener("click", async () => {
 
 // ---------- Tresor sperren ----------
 
-document.getElementById("lock-button").addEventListener("click", async () => {
+async function lockNow(message) {
     try {
-        // 401 vault_locked heißt nur "war schon gesperrt", lokal wird trotzdem aufgeräumt
+       
         await vaultRequest("POST", "/vault/lock");
     } catch (error) {
         console.error(error);
     }
-    lockVault("Tresor gesperrt.");
-});
+    lockVault(message);
+}
+
+document.getElementById("lock-button").addEventListener("click", () => lockNow("Tresor gesperrt."));
+
+
+const AUTO_LOCK_MS = 15 * 60 * 1000;
+let autoLockTimer = null;
+
+function resetAutoLock() {
+    clearTimeout(autoLockTimer);
+    if (dek) {
+        autoLockTimer = setTimeout(() => lockNow("Tresor nach 15 Minuten ohne Aktivität gesperrt."), AUTO_LOCK_MS);
+    }
+}
+
+for (const type of ["click", "keydown", "mousemove", "scroll"]) {
+    document.addEventListener(type, resetAutoLock, { passive: true });
+}
