@@ -38,12 +38,16 @@ body {
 
 .topbar {
     grid-area: topbar;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
+    background: #1e2533;
+    color: white;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 32px;
+    /* bleibt beim Scrollen oben stehen und liegt über dem Inhalt */
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 
 
