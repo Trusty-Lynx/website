@@ -90,6 +90,10 @@ form.addEventListener("submit", async (event) => {
         sessionStorage.setItem("userId", loginData.userId);
         // Neue Platzhalter-Session für den Vault: ein neuer Login macht den alten Tresor-Token ungültig
         sessionStorage.setItem("vaultSessionId", crypto.randomUUID());
+        // Letzter Login: den vorherigen Zeitpunkt fürs Dashboard merken, dann den jetzigen speichern (nur auf diesem Gerät)
+        const lastLoginKey = "lastLogin:" + loginData.userId;
+        sessionStorage.setItem("previousLogin", localStorage.getItem(lastLoginKey) || "");
+        localStorage.setItem(lastLoginKey, Date.now().toString());
         passwordInput.value = "";
         window.location.href = "Dashboard.html";
 
