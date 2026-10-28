@@ -33,6 +33,26 @@
             <h1 class="page-title">Hallo!</h1>
             <p class="page-subtitle">Schön, dass du wieder da bist. Hier ist ein Überblick über deinen Tresor.</p>
 
+            <section class="card totp-banner" id="totp-banner" hidden>
+                <div class="totp-qr" id="totp-qr"></div>
+                <div class="totp-body">
+                    <h2 class="totp-title">Zwei-Faktor-Anmeldung einrichten</h2>
+                    <p class="totp-text">Schütze dein Konto mit einem Code aus einer Authenticator-App. Scanne den
+                        QR-Code und gib den Code ein, den die App anzeigt.</p>
+                    <p class="totp-text">Secret zum Abtippen: <code class="totp-secret" id="totp-secret"></code></p>
+                    <p class="totp-text">Bewahre das Secret gut auf. Ohne die App kommst du nicht mehr in dein Konto.</p>
+                    <form id="totp-form" class="totp-form" novalidate>
+                        <div class="field">
+                            <label for="totp-code">Code aus der App</label>
+                            <input id="totp-code" type="text" inputmode="numeric" autocomplete="one-time-code"
+                                maxlength="7" placeholder="123456">
+                        </div>
+                        <p class="error" id="totp-error" role="alert"></p>
+                        <button class="btn primary btn-inline" type="submit">Aktivieren</button>
+                    </form>
+                </div>
+            </section>
+
             <section class="cards">
                 <article class="card">
                     <h2 class="card-title">Gespeicherte Passwörter</h2>
@@ -145,6 +165,9 @@
     </dialog>
 
     <script src="https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/argon2.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js"
+        integrity="sha384-e9EFD6BGC90bkW9aDV5xbbBfzwN7G8YImHao2lfLVKV/hPB0E0go+H3I64h7oHtA"
+        crossorigin="anonymous"></script>
     <script src="common.js"></script>
     <script src="dashboard/dashboard.js"></script>
 </body>

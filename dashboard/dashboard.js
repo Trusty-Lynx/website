@@ -784,3 +784,81 @@ function resetAutoLock() {
 for (const type of ["click", "keydown", "mousemove", "scroll"]) {
     document.addEventListener(type, resetAutoLock, { passive: true });
 }
+
+
+// ---------- Zwei-Faktor-Anmeldung nachrüsten (nur alte Konten) ----------
+
+const totpBanner = document.getElementById("totp-banner");
+const totpForm = document.getElementById("totp-form");
+const totpError = document.getElementById("totp-error");
+const totpCodeInput = document.getElementById("totp-code");
+
+// Nur im Arbeitsspeicher, nie im Storage
+let totpSecret = null;
+
+if (sessionStorage.getItem("totpEnabled") === "false") {
+    totpSecret = newTotpSecret();
+    showTotpSetup(
+        document.getElementById("totp-qr"),
+        document.getElementById("totp-secret"),
+        sessionStorage.getItem("email") ?? "",
+        totpSecret,
+    );
+    totpBanner.hidden = false;
+}
+
+function totpDone() {
+    totpSecret?.fill(0);
+    totpSecret = null;
+    sessionStorage.setItem("totpEnabled", "true");
+    totpBanner.hidden = true;
+}
+
+totpForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    totpError.textContent = "";
+
+    const code = normalizeTotpCode(totpCodeInput.value);
+    if (code === null) {
+        totpError.textContent = "Bitte den 6-stelligen Code aus deiner Authenticator-App eingeben.";
+        return;
+    }
+
+    const button = totpForm.querySelector("button");
+    button.disabled = true;
+
+    try {
+        const response = await fetch(API_BASE + "/account/totp", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + loginToken,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ secret: bytesToBase64(totpSecret), code: code }),
+        });
+
+        // 409: Konto hat schon TOTP, z. B. in einem anderen Tab eingerichtet
+        if (response.status === 204 || response.status === 409) {
+            totpDone();
+            return;
+        }
+        if (response.status === 401) {
+            goToLogin();
+            return;
+        }
+        if (response.status === 400) {
+            const error = await response.json().catch(() => ({}));
+            if (error.reason === "invalid_totp") {
+                totpCodeInput.value = "";
+                totpError.textContent = "Der Code stimmt nicht. Warte auf den nächsten Code in der App und gib ihn ein.";
+                return;
+            }
+        }
+        totpError.textContent = "Gerade nicht möglich. Bitte versuche es später erneut.";
+    } catch (error) {
+        console.error(error);
+        totpError.textContent = "Server nicht erreichbar.";
+    } finally {
+        button.disabled = false;
+    }
+});

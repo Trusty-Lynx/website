@@ -122,3 +122,28 @@ input {
     font-size: 14px;
     margin: 24px 0 0;
 }
+
+/*Zwei-Faktor-Einrichtung*/
+
+.totp-text {
+    font-size: 14px;
+    margin: 0 0 12px;
+}
+
+.totp-qr {
+    margin-bottom: 12px;
+}
+
+.totp-qr svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+}
+
+.totp-secret {
+    font-family: monospace;
+    font-size: 13px;
+    color: #333333;
+    overflow-wrap: anywhere;
+}
