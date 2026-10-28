@@ -33,6 +33,12 @@
                     </div>
                 </div>
 
+                <div class="field">
+                    <label for="totp-code">Code aus der Authenticator-App</label>
+                    <input id="totp-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7"
+                        placeholder="123456">
+                </div>
+
                 <p class="error" id="auth-error" role="alert"></p>
                 <button class="btn primary" id="auth-submit" type="submit">Anmelden</button>
             </form>

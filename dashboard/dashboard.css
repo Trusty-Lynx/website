@@ -361,3 +361,46 @@ select {
     background: #cc0000;
     color: white;
 }
+
+/* Zwei-Faktor-Anmeldung nachrüsten (nur alte Konten) */
+
+.totp-banner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.totp-qr svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.totp-body {
+    flex: 1;
+    min-width: 240px;
+}
+
+.totp-title {
+    margin: 0 0 8px;
+    font-size: 18px;
+}
+
+.totp-text {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.totp-secret {
+    font-family: monospace;
+    font-size: 14px;
+    color: #1f2937;
+    overflow-wrap: anywhere;
+}
+
+.totp-form {
+    max-width: 380px;
+}

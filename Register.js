@@ -5,6 +5,14 @@ const passwordConfirmInput = document.getElementById("password-confirm");
 const togglePasswordButton = document.getElementById("toggle-password");
 const errorText = document.getElementById("auth-error");
 const submitButton = document.getElementById("auth-submit");
+const totpSection = document.getElementById("totp-setup");
+const totpQr = document.getElementById("totp-qr");
+const totpSecretText = document.getElementById("totp-secret");
+const totpCodeInput = document.getElementById("totp-code");
+
+// Ein Secret pro Einrichtung. Nur im Speicher, nie in localStorage/sessionStorage
+let totpSecret = null;
+let totpEmail = null;
 
 togglePasswordButton.addEventListener("click", () => {
     const hidden = passwordInput.type === "password";
@@ -48,7 +56,27 @@ form.addEventListener("submit", async (event) => {
         return;
     }
 
-    
+    // Erster Klick: nur QR-Code zeigen, noch kein Request. Neue E-Mail: neues Secret, weil die E-Mail im Eintrag der App steht
+    if (totpSecret === null || totpEmail !== email) {
+        if (totpSecret !== null) {
+            totpSecret.fill(0);
+            errorText.textContent = "Die E-Mail hat sich geändert. Bitte scanne den neuen QR-Code.";
+        }
+        totpSecret = newTotpSecret();
+        totpEmail = email;
+        showTotpSetup(totpQr, totpSecretText, email, totpSecret);
+        totpSection.hidden = false;
+        totpCodeInput.value = "";
+        totpCodeInput.focus();
+        return;
+    }
+
+    const code = normalizeTotpCode(totpCodeInput.value);
+    if (code === null) {
+        errorText.textContent = "Bitte den 6-stelligen Code aus deiner Authenticator-App eingeben.";
+        return;
+    }
+
     submitButton.disabled = true;
     submitButton.textContent = "Wird erstellt…";
 
@@ -68,10 +96,21 @@ form.addEventListener("submit", async (event) => {
                 salt: salt,
                 kdf: KDF,
                 loginKey: loginKey,
+                totp: { secret: bytesToBase64(totpSecret), code: code },
             }),
         });
 
-        
+        // Falscher Code: dasselbe Secret behalten, der Nutzer hat es ja schon in der App
+        if (response.status === 400) {
+            const error = await response.json().catch(() => ({}));
+            if (error.reason === "invalid_totp") {
+                totpCodeInput.value = "";
+                totpCodeInput.focus();
+                errorText.textContent = "Der Code stimmt nicht. Warte auf den nächsten Code in der App und gib ihn ein.";
+                return;
+            }
+        }
+
         if (response.status === 409) {
             errorText.textContent = "Für diese E-Mail gibt es schon einen Account.";
             return;
@@ -83,8 +122,12 @@ form.addEventListener("submit", async (event) => {
         }
 
         const data = await response.json();
+        totpSecret.fill(0);
+        totpSecret = null;
         sessionStorage.setItem("loginToken", data.token);
         sessionStorage.setItem("userId", data.userId);
+        sessionStorage.setItem("email", email);
+        sessionStorage.setItem("totpEnabled", "true");
         // Neue Platzhalter-Session für den Vault: ein neuer Login macht den alten Tresor-Token ungültig
         sessionStorage.setItem("vaultSessionId", crypto.randomUUID());
         // Erster Login: es gibt noch keinen vorherigen, den jetzigen fürs nächste Mal speichern
