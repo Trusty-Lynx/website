@@ -70,6 +70,24 @@
                 </article>
             </section>
 
+            <section class="card breach">
+                <div class="vault-header">
+                    <h2 class="vault-title">Konten auf Leaks prüfen</h2>
+                    <button class="btn primary btn-inline" id="breach-button" type="button">Jetzt prüfen</button>
+                </div>
+                <p class="totp-text">Prüft deine Konto-E-Mail und die E-Mails aus deinem Tresor gegen bekannte
+                    Datenlecks. E-Mails verlassen dein Gerät nur als gekürzter Hash.</p>
+                <label class="checkbox breach-consent">
+                    <input id="breach-usernames" type="checkbox">
+                    Auch Benutzernamen prüfen (werden an LeakCheck übermittelt)
+                </label>
+                <p class="breach-progress" id="breach-progress" hidden></p>
+                <p class="error" id="breach-error" role="alert"></p>
+                <ul class="breach-list" id="breach-list"></ul>
+                <p class="breach-powered">Powered by <a href="https://leakcheck.io" target="_blank"
+                        rel="noopener noreferrer">LeakCheck</a></p>
+            </section>
+
             <section class="card vault">
                                 <div class="vault-header">
                     <h2 class="vault-title">Tresor</h2>

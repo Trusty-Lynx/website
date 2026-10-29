@@ -404,3 +404,40 @@ select {
 .totp-form {
     max-width: 380px;
 }
+
+/* Konten-Leak-Check (Breach-Service) */
+
+.breach {
+    margin-bottom: 24px;
+}
+
+.breach-consent {
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.breach-progress {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.breach-list {
+    margin: 0 0 12px;
+    padding-left: 20px;
+    font-size: 14px;
+}
+
+.breach-list li {
+    margin-bottom: 6px;
+}
+
+.breach-hit {
+    color: #cc0000;
+}
+
+.breach-powered {
+    margin: 0;
+    font-size: 12px;
+    color: #6b7280;
+}

@@ -862,3 +862,156 @@ totpForm.addEventListener("submit", async (event) => {
         button.disabled = false;
     }
 });
+
+
+// ---------- Konten auf Leaks prüfen (Breach-Service, POST /breach/account) ----------
+
+const breachButton = document.getElementById("breach-button");
+const breachUsernames = document.getElementById("breach-usernames");
+const breachProgress = document.getElementById("breach-progress");
+const breachError = document.getElementById("breach-error");
+const breachList = document.getElementById("breach-list");
+
+// Gleiche Grenzen wie im Breach-Service (validation/RequestValidation.kt), sonst gibt es nur 400
+const USERNAME_MIN = 3;
+const USERNAME_MAX = 254;
+// Wer länger als 3 s warten müsste, bekommt sofort 429. Nicht endlos wiederholen.
+const BREACH_MAX_RETRIES = 5;
+
+// LeakCheck-Hash: SHA-256 über die E-Mail in Kleinbuchstaben, hex, die ersten 24 Zeichen
+async function emailHash(email) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(email.trim().toLowerCase()));
+    return bytesToHex(new Uint8Array(digest)).slice(0, 24);
+}
+
+function isCheckableUsername(name) {
+    return name.length >= USERNAME_MIN && name.length <= USERNAME_MAX && !/[\u0000-\u001f\u007f]/.test(name);
+}
+
+// Konto-E-Mail + alle verschiedenen "user"-Felder aus den Köpfen, ohne Duplikate.
+// Enthält "@" → E-Mail (nur als Hash), sonst Benutzername (nur mit Zustimmung, geht im Klartext raus).
+function collectBreachChecks(withUsernames) {
+    const checks = new Map();
+    const values = [sessionStorage.getItem("email"), ...items.map((item) => item.user)];
+    for (const raw of values) {
+        const value = (raw ?? "").trim();
+        if (!value) continue;
+        if (value.includes("@")) {
+            const key = "e:" + value.toLowerCase();
+            if (!checks.has(key)) checks.set(key, { type: "email_hash", label: value.toLowerCase() });
+        } else if (withUsernames && isCheckableUsername(value)) {
+            const key = "u:" + value;
+            if (!checks.has(key)) checks.set(key, { type: "username", label: value });
+        }
+    }
+    return [...checks.values()];
+}
+
+function breachRequest(body) {
+    return fetch(BREACH_BASE + "/breach/account", {
+        method: "POST",
+        headers: {
+            "Authorization": "Bearer " + loginToken,
+            "X-Vault-Token": vaultToken,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+    });
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Ergebnis: { found, fields, sources } bei Erfolg, null = nicht geprüft (502, zu oft 429),
+// "locked" = Tresor gesperrt, dann bricht die Prüfung ab
+async function checkOneAccount(check) {
+    const value = check.type === "email_hash" ? await emailHash(check.label) : check.label;
+
+    for (let attempt = 0; attempt <= BREACH_MAX_RETRIES; attempt++) {
+        if (!vaultToken) return "locked";
+        const response = await breachRequest({ type: check.type, value: value });
+
+        if (response.ok) {
+            return await response.json();
+        }
+        if (response.status === 429) {
+            const seconds = Number(response.headers.get("Retry-After")) || 2;
+            breachProgress.textContent += ` (warte ${seconds} s …)`;
+            await sleep(seconds * 1000);
+            continue;
+        }
+        // readVaultError leitet bei 401 unauthorized (Login abgelaufen) schon zum Login weiter
+        const errorCode = await readVaultError(response);
+        if (errorCode === "vault_locked") return "locked";
+        return null;
+    }
+    return null;
+}
+
+function breachItem(text, hit) {
+    const li = document.createElement("li");
+    li.textContent = text;
+    if (hit) li.classList.add("breach-hit");
+    return li;
+}
+
+function describeBreach(check, result) {
+    const who = check.label;
+    if (result === null) {
+        return breachItem(`${who}: nicht geprüft (LeakCheck gerade nicht erreichbar)`, false);
+    }
+    if (result.found === 0) {
+        return breachItem(`${who}: in keinem bekannten Leak`, false);
+    }
+    const sources = result.sources
+        .map((source) => source.date ? `${source.name} (${source.date})` : source.name)
+        .join(", ");
+    const fields = result.fields.length ? ` Betroffen: ${result.fields.join(", ")}.` : "";
+    return breachItem(`${who}: in ${result.found} Leak(s) gefunden.${fields} Quellen: ${sources || "unbekannt"}`, true);
+}
+
+breachButton.addEventListener("click", async () => {
+    breachError.textContent = "";
+    breachList.replaceChildren();
+
+    // Nur bei entsperrtem Tresor: Die Benutzernamen stammen aus dem Tresor, und der Breach-Service will den Tresor-Token
+    if (!vaultToken) {
+        breachError.textContent = "Bitte entsperre zuerst deinen Tresor.";
+        return;
+    }
+
+    const checks = collectBreachChecks(breachUsernames.checked);
+    if (checks.length === 0) {
+        breachError.textContent = "Keine E-Mails oder Benutzernamen zum Prüfen gefunden.";
+        return;
+    }
+
+    breachButton.disabled = true;
+    breachProgress.hidden = false;
+    let hits = 0;
+
+    try {
+        // Der Reihe nach, LeakCheck erlaubt nur 1 Anfrage pro Sekunde für den ganzen Server
+        for (let i = 0; i < checks.length; i++) {
+            breachProgress.textContent = `Prüfe ${i + 1} von ${checks.length} …`;
+            const result = await checkOneAccount(checks[i]);
+            if (result === "locked") {
+                lockVault(LOCKED_MESSAGE);
+                breachList.replaceChildren();
+                breachError.textContent = "Prüfung abgebrochen, der Tresor wurde gesperrt.";
+                return;
+            }
+            if (result && result.found > 0) hits++;
+            breachList.append(describeBreach(checks[i], result));
+        }
+        breachProgress.textContent = hits === 0
+            ? `Fertig: ${checks.length} geprüft, nichts gefunden.`
+            : `Fertig: ${hits} von ${checks.length} in Leaks gefunden. Ändere dort am besten die Passwörter.`;
+    } catch (error) {
+        console.error(error);
+        breachError.textContent = "Breach-Service nicht erreichbar.";
+    } finally {
+        breachButton.disabled = false;
+    }
+});
