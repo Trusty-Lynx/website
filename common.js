@@ -1,5 +1,6 @@
 const API_BASE = "https://auth.nexvent.de";
 const VAULT_BASE = "https://vault.nexvent.de";
+const BREACH_BASE = "https://breach.nexvent.de";
 
 const KDF = { alg: "argon2id", m: 65536, t: 3, p: 1, len: 32 };
 
