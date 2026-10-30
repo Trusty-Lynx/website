@@ -114,6 +114,13 @@
                         <label for="add-password">Passwort</label>
                         <input id="add-password" type="password" autocomplete="new-password" required>
                     </div>
+                    <div class="field">
+                        <label for="add-alg">Verschlüsselung auf dem Server</label>
+                        <select id="add-alg">
+                            <option value="chacha">ChaCha20-Poly1305</option>
+                            <option value="aes">AES-256-GCM</option>
+                        </select>
+                    </div>
                     <p class="error" id="add-error" role="alert"></p>
                     <button class="btn primary btn-inline" type="submit">Speichern</button>
                     <button class="btn btn-inline" id="add-cancel" type="button">Abbrechen</button>

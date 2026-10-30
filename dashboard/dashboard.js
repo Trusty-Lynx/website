@@ -88,6 +88,10 @@ async function readVaultError(response) {
 }
 
 function vaultErrorMessage(errorCode, fallback) {
+    // Einer der beiden Crypto-Services (AES / ChaCha) ist weg, der Vault sagt in reason welcher
+    if (errorCode === "crypto_unavailable") {
+        return "Verschlüsselungsservice ist gerade nicht erreichbar. Versuche es mit einem anderen oder später wieder.";
+    }
     if (errorCode === "upstream_error") {
         return "Gerade nicht möglich. Bitte versuche es später erneut.";
     }
@@ -438,7 +442,8 @@ async function loadItems() {
         items = [];
         for (const item of data.items) {
             const head = await decryptPart(base64ToBytes(item.head), item.id, "h", item.rev);
-            items.push({ id: item.id, rev: item.rev, title: head.title, url: head.url, user: head.user });
+            // alg: welcher Crypto-Service den Eintrag auf dem Server verschlüsselt (älterer Vault ohne Feld → chacha)
+            items.push({ id: item.id, rev: item.rev, title: head.title, url: head.url, user: head.user, alg: item.alg || "chacha" });
         }
         renderItems();
     } catch (error) {
@@ -592,6 +597,7 @@ const titleInput = document.getElementById("add-title");
 const urlInput = document.getElementById("add-url");
 const userInput = document.getElementById("add-user");
 const passwordInput = document.getElementById("add-password");
+const algInput = document.getElementById("add-alg");
 
 // null = neuer Eintrag, sonst der Eintrag, der gerade bearbeitet wird
 let editingItem = null;
@@ -613,6 +619,7 @@ async function openItemForm(item) {
         titleInput.value = item.title;
         urlInput.value = item.url;
         userInput.value = item.user;
+        algInput.value = item.alg;
         // Das Passwort kommt nur auf diesen Klick vom Vault, wie bei "Anzeigen"
         const password = await fetchSecret(item);
         if (password === null) {
@@ -667,6 +674,8 @@ addForm.addEventListener("submit", async (event) => {
             rev: rev,
             head: bytesToBase64(head),
             secret: bytesToBase64(secret),
+            // Welcher Crypto-Service Schicht 2 macht. Wechsel beim Bearbeiten: der Vault verschlüsselt einfach neu.
+            alg: algInput.value,
         }, itemId);
 
         if (response.status === 409) {
@@ -686,7 +695,7 @@ addForm.addEventListener("submit", async (event) => {
             return;
         }
 
-        const saved = { id: itemId, rev: rev, title: title, url: url, user: user };
+        const saved = { id: itemId, rev: rev, title: title, url: url, user: user, alg: algInput.value };
         if (editingItem) {
             items = items.map((other) => (other.id === itemId ? saved : other));
         } else {
