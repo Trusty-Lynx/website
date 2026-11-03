@@ -905,8 +905,12 @@ const breachList = document.getElementById("breach-list");
 // Gleiche Grenzen wie im Breach-Service (validation/RequestValidation.kt), sonst gibt es nur 400
 const USERNAME_MIN = 3;
 const USERNAME_MAX = 254;
-// Wer länger als 3 s warten müsste, bekommt sofort 429. Nicht endlos wiederholen.
+// 429 gibt es nur noch, wenn die Queue im Breach-Service voll ist. Nicht endlos wiederholen.
 const BREACH_MAX_RETRIES = 5;
+// Der Breach-Service arbeitet asynchron: POST legt einen Job an, das Ergebnis holen wir per GET ab (Polling).
+const BREACH_POLL_MS = 1000;
+// Der Service versucht es bei LeakCheck-Ausfall bis zu 1 h. So lange wartet die Seite nicht, danach "nicht geprüft".
+const BREACH_MAX_WAIT_MS = 2 * 60 * 1000;
 
 // LeakCheck-Hash: SHA-256 über die E-Mail in Kleinbuchstaben, hex, die ersten 24 Zeichen
 async function emailHash(email) {
@@ -949,25 +953,47 @@ function breachRequest(body) {
     });
 }
 
+// GET /breach/account/jobs/{jobId}: Stand eines Jobs, gleiche Tokens wie beim Anlegen
+function breachJobRequest(jobId) {
+    return fetch(BREACH_BASE + "/breach/account/jobs/" + encodeURIComponent(jobId), {
+        headers: {
+            "Authorization": "Bearer " + loginToken,
+            "X-Vault-Token": vaultToken,
+        },
+    });
+}
+
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Ergebnis: { found, fields, sources } bei Erfolg, null = nicht geprüft (502, zu oft 429),
+// Hinweis in Klammern hinter "Prüfe 2 von 5 …" setzen, ohne dass sich mehrere Hinweise aneinanderhängen
+function setBreachHint(hint) {
+    breachProgress.textContent = breachProgress.textContent.replace(/ \(.*\)$/, "") + (hint ? ` (${hint})` : "");
+}
+
+// Ergebnis: { found, fields, sources } bei Erfolg, null = nicht geprüft (502, zu oft 429, LeakCheck zu lange weg),
 // "locked" = Tresor gesperrt, dann bricht die Prüfung ab
 async function checkOneAccount(check) {
     const value = check.type === "email_hash" ? await emailHash(check.label) : check.label;
 
+    const job = await createBreachJob({ type: check.type, value: value });
+    if (job === null || job === "locked") return job;
+    return await awaitBreachJob(job);
+}
+
+// 1. POST /breach/account → 202 mit { jobId, status }. Steht das Ergebnis im Cache, ist status schon "done".
+async function createBreachJob(body) {
     for (let attempt = 0; attempt <= BREACH_MAX_RETRIES; attempt++) {
         if (!vaultToken) return "locked";
-        const response = await breachRequest({ type: check.type, value: value });
+        const response = await breachRequest(body);
 
-        if (response.ok) {
+        if (response.status === 202) {
             return await response.json();
         }
         if (response.status === 429) {
             const seconds = Number(response.headers.get("Retry-After")) || 2;
-            breachProgress.textContent += ` (warte ${seconds} s …)`;
+            setBreachHint(`Warteschlange voll, warte ${seconds} s …`);
             await sleep(seconds * 1000);
             continue;
         }
@@ -977,6 +1003,33 @@ async function checkOneAccount(check) {
         return null;
     }
     return null;
+}
+
+// 2. GET /breach/account/jobs/{jobId} jede Sekunde, bis "done" oder "failed"
+async function awaitBreachJob(job) {
+    const deadline = Date.now() + BREACH_MAX_WAIT_MS;
+    while (job.status !== "done" && job.status !== "failed") {
+        if (Date.now() > deadline) return null;
+        await sleep(BREACH_POLL_MS);
+        if (!vaultToken) return "locked";
+
+        const response = await breachJobRequest(job.jobId);
+        if (!response.ok) {
+            const errorCode = await readVaultError(response);
+            if (errorCode === "vault_locked") return "locked";
+            return null;
+        }
+        job = await response.json();
+
+        // LeakCheck gerade weg: Der Service wiederholt selbst, wir zeigen nur an, wann
+        if (job.status === "waiting_for_upstream" && job.nextAttemptAt) {
+            const time = new Date(job.nextAttemptAt).toLocaleTimeString();
+            setBreachHint(`LeakCheck nicht erreichbar, neuer Versuch um ${time} …`);
+        } else {
+            setBreachHint("");
+        }
+    }
+    return job.status === "done" ? job.result : null;
 }
 
 function breachItem(text, hit) {
