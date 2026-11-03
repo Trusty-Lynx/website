@@ -43,31 +43,42 @@ function getVaultSessionId() {
     return id;
 }
 
-async function vaultRequest(method, path, body, itemId) {
-    const bodyText = body ? JSON.stringify(body) : "";
-
+// Der Tresor läuft komplett über GraphQL (POST /graphql am Vault-Service), Auth und Breach bleiben REST.
+// Gleiche Header wie früher bei REST, nur die itemId ist jetzt ein Argument in der Abfrage statt X-Item-Id.
+// Ergebnis: { data, error, currentRev }. error ist derselbe Code wie früher bei REST ("not_found", "vault_locked", …) oder null.
+async function vaultQuery(query, variables) {
     const headers = {
         "Authorization": "Bearer " + loginToken,
-        // Platzhalter, solange es kein Gateway gibt 
+        // Platzhalter, solange es kein Gateway gibt
         "X-User-Id": sessionStorage.getItem("userId"),
         "X-Session-Id": getVaultSessionId(),
+        "Content-Type": "application/json",
     };
-    if (body) {
-        headers["Content-Type"] = "application/json";
-    }
     if (vaultToken) {
         headers["X-Vault-Token"] = vaultToken;
     }
-   
-    if (itemId) {
-        headers["X-Item-Id"] = itemId;
+
+    const response = await fetch(VAULT_BASE + "/graphql", {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({ query: query, variables: variables || {} }),
+    });
+    const requestId = response.headers.get("X-Request-ID");
+
+    // Nur ein ungültiger Login-Token kommt als HTTP-Fehler (401 unauthorized → Login), alles andere mit 200 in "errors"
+    if (!response.ok) {
+        return { data: null, error: (await readVaultError(response)) || "upstream_error" };
     }
 
-    return fetch(VAULT_BASE + path, {
-        method: method,
-        headers: headers,
-        body: body ? bodyText : undefined,
-    });
+    const result = await response.json();
+    const error = result.errors && result.errors[0];
+    if (error) {
+        // Fehler ohne code sind Fehler in der Abfrage selbst (Tippfehler im Schema), also unser Bug
+        const extensions = error.extensions || {};
+        console.warn("Vault-Fehler", extensions.code || error.message, extensions.reason || "", "X-Request-ID:", requestId);
+        return { data: result.data, error: extensions.code || "internal_error", currentRev: extensions.currentRev };
+    }
+    return { data: result.data, error: null };
 }
 
 
@@ -77,6 +88,7 @@ function goToLogin() {
 }
 
 
+// Fehler aus einer REST-Antwort ({ error, reason }): beim Breach-Service und beim 401 von /graphql
 async function readVaultError(response) {
     const data = await response.json().catch(() => ({}));
     console.warn("Vault-Fehler", response.status, data.error, data.reason || "",
@@ -213,14 +225,14 @@ async function encryptPart(value, itemId, part, rev, nonce = crypto.getRandomVal
 
 async function showLock() {
     try {
-        const response = await vaultRequest("GET", "/vault/params");
+        const result = await vaultQuery("query { vaultParams { salt } }");
 
-        if (response.status === 404) {
+        if (result.error === "not_found") {
             createForm.hidden = false;
-        } else if (response.ok) {
+        } else if (!result.error) {
             unlockForm.hidden = false;
         } else {
-            lockMessage.textContent = vaultErrorMessage(await readVaultError(response),
+            lockMessage.textContent = vaultErrorMessage(result.error,
                 "Tresor gerade nicht erreichbar. Bitte lade die Seite neu.");
         }
     } catch (error) {
@@ -266,27 +278,31 @@ createForm.addEventListener("submit", async (event) => {
         const dekBytes = crypto.getRandomValues(new Uint8Array(32));
         const wdek = await wrapDek(dekBytes, keys.kek);
 
-        const response = await vaultRequest("POST", "/vault", {
-            salt: bytesToBase64(saltBytes),
-            kdf: KDF,
-            unlockKey: bytesToBase64(keys.unlockKey),
-            wdek: bytesToBase64(wdek),
-        });
+        const result = await vaultQuery(
+            "mutation($input: CreateVaultInput!) { createVault(input: $input) { vaultToken } }",
+            {
+                input: {
+                    salt: bytesToBase64(saltBytes),
+                    kdf: KDF,
+                    unlockKey: bytesToBase64(keys.unlockKey),
+                    wdek: bytesToBase64(wdek),
+                },
+            }
+        );
         keys.unlockKey.fill(0);
         keys.kek.fill(0);
 
-        if (response.status === 409) {
+        if (result.error === "already_exists") {
             createForm.hidden = true;
             unlockForm.hidden = false;
             return;
         }
-        if (!response.ok) {
-            createError.textContent = vaultErrorMessage(await readVaultError(response), "Tresor konnte nicht erstellt werden.");
+        if (result.error) {
+            createError.textContent = vaultErrorMessage(result.error, "Tresor konnte nicht erstellt werden.");
             return;
         }
 
-        const data = await response.json();
-        vaultToken = data.vaultToken;
+        vaultToken = result.data.createVault.vaultToken;
         dek = await crypto.subtle.importKey("raw", dekBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
         dekBytes.fill(0);
         lock.hidden = true;
@@ -316,17 +332,17 @@ unlockForm.addEventListener("submit", async (event) => {
     button.disabled = true;
 
     try {
-        const paramsResponse = await vaultRequest("GET", "/vault/params");
-        if (paramsResponse.status === 404) {
+        const paramsResult = await vaultQuery("query { vaultParams { salt kdf { alg m t p len } } }");
+        if (paramsResult.error === "not_found") {
             unlockForm.hidden = true;
             createForm.hidden = false;
             return;
         }
-        if (!paramsResponse.ok) {
-            unlockError.textContent = vaultErrorMessage(await readVaultError(paramsResponse), "Tresor gerade nicht erreichbar.");
+        if (paramsResult.error) {
+            unlockError.textContent = vaultErrorMessage(paramsResult.error, "Tresor gerade nicht erreichbar.");
             return;
         }
-        const params = await paramsResponse.json();
+        const params = paramsResult.data.vaultParams;
         if (!isDefaultKdf(params.kdf)) {
             unlockError.textContent = "Der Tresor konnte nicht geöffnet werden.";
             return;
@@ -334,29 +350,25 @@ unlockForm.addEventListener("submit", async (event) => {
 
         const keys = await deriveVaultKeys(passwordInput.value, base64ToBytes(params.salt), params.kdf);
 
-        const response = await vaultRequest("POST", "/vault/unlock", {
-            unlockKey: bytesToBase64(keys.unlockKey),
-        });
+        const result = await vaultQuery(
+            "mutation($unlockKey: String!) { unlockVault(unlockKey: $unlockKey) { vaultToken wdek } }",
+            { unlockKey: bytesToBase64(keys.unlockKey) }
+        );
         keys.unlockKey.fill(0);
 
-        if (response.status === 401) {
+        // "unauthorized" in errors heißt hier: falsches Masterpasswort (ein ungültiger Login-Token wäre HTTP 401)
+        if (result.error === "unauthorized") {
             unlockError.textContent = "Masterpasswort ist falsch.";
             return;
         }
-        if (response.status === 429) {
-            const seconds = response.headers.get("Retry-After");
-            unlockError.textContent = `Zu viele Fehlversuche. Bitte ${seconds} Sekunden warten.`;
-            return;
-        }
-        if (!response.ok) {
-            const errorCode = await readVaultError(response);
-            unlockError.textContent = errorCode === "integrity_error"
+        if (result.error) {
+            unlockError.textContent = result.error === "integrity_error"
                 ? "Der Tresor konnte nicht geöffnet werden."
-                : vaultErrorMessage(errorCode, "Tresor konnte nicht entsperrt werden.");
+                : vaultErrorMessage(result.error, "Tresor konnte nicht entsperrt werden.");
             return;
         }
 
-        const data = await response.json();
+        const data = result.data.unlockVault;
         const wdek = base64ToBytes(data.wdek);
         if (wdek.length !== 62 || wdek[0] !== 1 || wdek[1] !== 1) {
             unlockError.textContent = "Der Tresor konnte nicht geöffnet werden.";
@@ -427,17 +439,16 @@ function lockVault(message) {
 async function loadItems() {
     vaultErrorText.textContent = "";
     try {
-        const response = await vaultRequest("GET", "/items");
-        if (!response.ok) {
-            const errorCode = await readVaultError(response);
-            if (errorCode === "vault_locked") {
+        const result = await vaultQuery("query { items { id rev head alg } }");
+        if (result.error) {
+            if (result.error === "vault_locked") {
                 lockVault(LOCKED_MESSAGE);
                 return;
             }
-            vaultErrorText.textContent = vaultErrorMessage(errorCode, "Einträge konnten nicht geladen werden.");
+            vaultErrorText.textContent = vaultErrorMessage(result.error, "Einträge konnten nicht geladen werden.");
             return;
         }
-        const data = await response.json();
+        const data = result.data;
 
         items = [];
         for (const item of data.items) {
@@ -521,19 +532,21 @@ function renderItems() {
 async function fetchSecret(item) {
     vaultErrorText.textContent = "";
     try {
-        const response = await vaultRequest("GET", "/items/secret", null, item.id);
-        if (!response.ok) {
-            const errorCode = await readVaultError(response);
-            if (errorCode === "vault_locked") {
+        const result = await vaultQuery(
+            "query($itemId: ID!) { itemSecret(itemId: $itemId) { data rev } }",
+            { itemId: item.id }
+        );
+        if (result.error) {
+            if (result.error === "vault_locked") {
                 lockVault(LOCKED_MESSAGE);
                 return null;
             }
-            vaultErrorText.textContent = errorCode === "not_found"
+            vaultErrorText.textContent = result.error === "not_found"
                 ? "Diesen Eintrag gibt es nicht mehr."
-                : vaultErrorMessage(errorCode, "Passwort konnte nicht geladen werden.");
+                : vaultErrorMessage(result.error, "Passwort konnte nicht geladen werden.");
             return null;
         }
-        const data = await response.json();
+        const data = result.data.itemSecret;
         const secret = await decryptPart(base64ToBytes(data.data), item.id, "s", data.rev);
         return secret.pw;
     } catch (error) {
@@ -670,28 +683,33 @@ addForm.addEventListener("submit", async (event) => {
         const head = await encryptPart({ title: title, url: url, user: user }, itemId, "h", rev);
         const secret = await encryptPart({ pw: passwordInput.value }, itemId, "s", rev);
 
-        const response = await vaultRequest("PUT", "/items", {
-            rev: rev,
-            head: bytesToBase64(head),
-            secret: bytesToBase64(secret),
-            // Welcher Crypto-Service Schicht 2 macht. Wechsel beim Bearbeiten: der Vault verschlüsselt einfach neu.
-            alg: algInput.value,
-        }, itemId);
+        const result = await vaultQuery(
+            "mutation($itemId: ID!, $input: PutItemInput!) { putItem(itemId: $itemId, input: $input) { rev } }",
+            {
+                itemId: itemId,
+                input: {
+                    rev: rev,
+                    head: bytesToBase64(head),
+                    secret: bytesToBase64(secret),
+                    // Welcher Crypto-Service Schicht 2 macht. Wechsel beim Bearbeiten: der Vault verschlüsselt einfach neu.
+                    alg: algInput.value,
+                },
+            }
+        );
 
-        if (response.status === 409) {
-            
+        if (result.error === "rev_conflict") {
+
             closeItemForm();
             await loadItems();
             vaultErrorText.textContent = "Der Eintrag wurde inzwischen woanders geändert. Bitte prüfe ihn und bearbeite ihn erneut.";
             return;
         }
-        if (!response.ok) {
-            const errorCode = await readVaultError(response);
-            if (errorCode === "vault_locked") {
+        if (result.error) {
+            if (result.error === "vault_locked") {
                 lockVault(LOCKED_MESSAGE);
                 return;
             }
-            addError.textContent = vaultErrorMessage(errorCode, "Eintrag konnte nicht gespeichert werden.");
+            addError.textContent = vaultErrorMessage(result.error, "Eintrag konnte nicht gespeichert werden.");
             return;
         }
 
@@ -740,15 +758,18 @@ deleteButton.addEventListener("click", async () => {
     deleteButton.disabled = true;
     try {
         const itemId = editingItem.id;
-        const response = await vaultRequest("DELETE", "/items", null, itemId);
+        const result = await vaultQuery(
+            "mutation($itemId: ID!) { deleteItem(itemId: $itemId) }",
+            { itemId: itemId }
+        );
 
-        if (!response.ok && response.status !== 404) {
-            const errorCode = await readVaultError(response);
-            if (errorCode === "vault_locked") {
+        // not_found: schon gelöscht (z. B. auf einem anderen Gerät), dann einfach aus der Liste nehmen
+        if (result.error && result.error !== "not_found") {
+            if (result.error === "vault_locked") {
                 lockVault(LOCKED_MESSAGE);
                 return;
             }
-            addError.textContent = vaultErrorMessage(errorCode, "Eintrag konnte nicht gelöscht werden.");
+            addError.textContent = vaultErrorMessage(result.error, "Eintrag konnte nicht gelöscht werden.");
             return;
         }
 
@@ -770,7 +791,7 @@ deleteButton.addEventListener("click", async () => {
 async function lockNow(message) {
     try {
        
-        await vaultRequest("POST", "/vault/lock");
+        await vaultQuery("mutation { lockVault }");
     } catch (error) {
         console.error(error);
     }
@@ -873,7 +894,7 @@ totpForm.addEventListener("submit", async (event) => {
 });
 
 
-// ---------- Konten auf Leaks prüfen (Breach-Service, POST /breach/account) ----------
+// ---------- Konten auf Leaks prüfen (Breach-Service, POST /breach/account + GET /breach/account/jobs/{jobId}) ----------
 
 const breachButton = document.getElementById("breach-button");
 const breachUsernames = document.getElementById("breach-usernames");
@@ -881,11 +902,24 @@ const breachProgress = document.getElementById("breach-progress");
 const breachError = document.getElementById("breach-error");
 const breachList = document.getElementById("breach-list");
 
-// Gleiche Grenzen wie im Breach-Service (validation/RequestValidation.kt), sonst gibt es nur 400
+// Gleiche Grenzen wie im Breach-Service (routes/Validation.kt), sonst gibt es nur 400
 const USERNAME_MIN = 3;
 const USERNAME_MAX = 254;
-// Wer länger als 3 s warten müsste, bekommt sofort 429. Nicht endlos wiederholen.
+// 429 beim Anlegen heißt: Queue im Service voll. Nicht endlos wiederholen.
 const BREACH_MAX_RETRIES = 5;
+// Der Service antwortet sofort mit einem Job, das Ergebnis wird abgefragt.
+// Öfter fragen bringt nichts, der Worker schafft eh nur ~1 LeakCheck-Anfrage pro Sekunde.
+const BREACH_POLL_MS = 1500;
+// Danach gibt der Browser für dieses Konto auf. Der Job läuft im Service weiter (bis zu 1 h),
+// beim nächsten Klick kommt das Ergebnis dann meist schon aus dem Cache.
+const BREACH_MAX_WAIT_MS = 3 * 60 * 1000;
+
+// "Prüfe 3 von 7 …", Wartehinweise werden hinten angehängt statt aufzusummieren
+let breachProgressBase = "";
+
+function showBreachProgress(extra) {
+    breachProgress.textContent = extra ? `${breachProgressBase} (${extra})` : breachProgressBase;
+}
 
 // LeakCheck-Hash: SHA-256 über die E-Mail in Kleinbuchstaben, hex, die ersten 24 Zeichen
 async function emailHash(email) {
@@ -893,14 +927,20 @@ async function emailHash(email) {
     return bytesToHex(new Uint8Array(digest)).slice(0, 24);
 }
 
-function isCheckableUsername(name) {
-    return name.length >= USERNAME_MIN && name.length <= USERNAME_MAX && !/[\u0000-\u001f\u007f]/.test(name);
+// LeakCheck durchsucht nur diese Zeichen, alles andere (Leerzeichen, Umlaute, alle anderen Sonderzeichen)
+// lehnt es ab. Am 2026-11-03 mit allen druckbaren ASCII-Zeichen geprüft, gleiche Regel wie routes/Validation.kt.
+const USERNAME_CHARS = /^[A-Za-z0-9._-]+$/;
+
+function hasCheckableLength(name) {
+    return name.length >= USERNAME_MIN && name.length <= USERNAME_MAX;
 }
 
 // Konto-E-Mail + alle verschiedenen "user"-Felder aus den Köpfen, ohne Duplikate.
 // Enthält "@" → E-Mail (nur als Hash), sonst Benutzername (nur mit Zustimmung, geht im Klartext raus).
+// Benutzernamen mit Zeichen, die LeakCheck nicht kann, gehen gar nicht erst raus und landen in unsupported.
 function collectBreachChecks(withUsernames) {
     const checks = new Map();
+    const unsupported = new Set();
     const values = [sessionStorage.getItem("email"), ...items.map((item) => item.user)];
     for (const raw of values) {
         const value = (raw ?? "").trim();
@@ -908,23 +948,33 @@ function collectBreachChecks(withUsernames) {
         if (value.includes("@")) {
             const key = "e:" + value.toLowerCase();
             if (!checks.has(key)) checks.set(key, { type: "email_hash", label: value.toLowerCase() });
-        } else if (withUsernames && isCheckableUsername(value)) {
+        } else if (withUsernames && hasCheckableLength(value)) {
+            if (!USERNAME_CHARS.test(value)) {
+                unsupported.add(value);
+                continue;
+            }
             const key = "u:" + value;
             if (!checks.has(key)) checks.set(key, { type: "username", label: value });
         }
     }
-    return [...checks.values()];
+    return { checks: [...checks.values()], unsupported: [...unsupported] };
 }
 
-function breachRequest(body) {
-    return fetch(BREACH_BASE + "/breach/account", {
-        method: "POST",
-        headers: {
-            "Authorization": "Bearer " + loginToken,
-            "X-Vault-Token": vaultToken,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+function unsupportedItem(names) {
+    return breachItem(`Nicht prüfbar, weil LeakCheck nur Buchstaben a–z, Ziffern und . _ - unterstützt: ${names.join(", ")}`, false);
+}
+
+// Beide Endpunkte wollen Login-Token und Tresor-Token, der Job-Abruf genauso wie das Anlegen
+function breachRequest(method, path, body) {
+    const headers = {
+        "Authorization": "Bearer " + loginToken,
+        "X-Vault-Token": vaultToken,
+    };
+    if (body) headers["Content-Type"] = "application/json";
+    return fetch(BREACH_BASE + path, {
+        method: method,
+        headers: headers,
+        body: body ? JSON.stringify(body) : undefined,
     });
 }
 
@@ -932,30 +982,73 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Ergebnis: { found, fields, sources } bei Erfolg, null = nicht geprüft (502, zu oft 429),
-// "locked" = Tresor gesperrt, dann bricht die Prüfung ab
+// Ergebnis: { found, fields, sources } bei Erfolg, null = nicht geprüft (Job failed, Queue voll, zu lange gewartet),
+// "unsupported" = LeakCheck kann den Namen nicht durchsuchen (400), "locked" = Tresor gesperrt, dann bricht die Prüfung ab
 async function checkOneAccount(check) {
     const value = check.type === "email_hash" ? await emailHash(check.label) : check.label;
+    const job = await submitBreachJob(check.type, value);
+    if (job === null || job === "locked" || job === "unsupported") return job;
+    return await awaitBreachJob(job);
+}
 
+// Legt den Job an. Antwort ist sofort 202 mit { jobId, status, ... }, bei Cache-Treffer schon mit status "done".
+async function submitBreachJob(type, value) {
     for (let attempt = 0; attempt <= BREACH_MAX_RETRIES; attempt++) {
         if (!vaultToken) return "locked";
-        const response = await breachRequest({ type: check.type, value: value });
+        const response = await breachRequest("POST", "/breach/account", { type: type, value: value });
 
         if (response.ok) {
             return await response.json();
         }
         if (response.status === 429) {
             const seconds = Number(response.headers.get("Retry-After")) || 2;
-            breachProgress.textContent += ` (warte ${seconds} s …)`;
+            showBreachProgress(`Service ausgelastet, warte ${seconds} s …`);
             await sleep(seconds * 1000);
             continue;
         }
         // readVaultError leitet bei 401 unauthorized (Login abgelaufen) schon zum Login weiter
         const errorCode = await readVaultError(response);
         if (errorCode === "vault_locked") return "locked";
+        // 400: Der Breach-Service lehnt Namen ab, die LeakCheck nicht durchsuchen kann (Leerzeichen, Umlaute, Sonderzeichen).
+        // Ein neuer Versuch ändert daran nichts.
+        if (response.status === 400) return "unsupported";
         return null;
     }
     return null;
+}
+
+// Fragt den Job ab, bis er done oder failed ist. Der Service wiederholt LeakCheck selbst (429, Ausfall),
+// der Browser muss nur warten und darf nicht vorher abbrechen.
+async function awaitBreachJob(job) {
+    const deadline = Date.now() + BREACH_MAX_WAIT_MS;
+    while (true) {
+        if (job.status === "done") return job.result;
+        if (job.status === "failed") return null;
+        if (Date.now() > deadline) return null;
+
+        showBreachProgress(job.status === "waiting_for_upstream"
+            ? `LeakCheck antwortet gerade nicht, Versuch ${job.attempts} …`
+            : null);
+        await sleep(nextBreachPoll(job));
+
+        if (!vaultToken) return "locked";
+        const response = await breachRequest("GET", "/breach/account/jobs/" + encodeURIComponent(job.jobId));
+        if (!response.ok) {
+            const errorCode = await readVaultError(response);
+            if (errorCode === "vault_locked") return "locked";
+            // 404: Job weg, z. B. weil der Service neu gestartet wurde (die Queue liegt nur im Speicher)
+            return null;
+        }
+        job = await response.json();
+    }
+}
+
+// Beim Warten auf LeakCheck steht in nextAttemptAt, wann der nächste Versuch kommt. Vorher fragen ist sinnlos,
+// aber höchstens 10 s still sein, damit die Anzeige nicht hängt.
+function nextBreachPoll(job) {
+    if (!job.nextAttemptAt) return BREACH_POLL_MS;
+    const untilRetry = Date.parse(job.nextAttemptAt) - Date.now();
+    return Math.min(Math.max(untilRetry, BREACH_POLL_MS), 10_000);
 }
 
 function breachItem(text, hit) {
@@ -969,6 +1062,9 @@ function describeBreach(check, result) {
     const who = check.label;
     if (result === null) {
         return breachItem(`${who}: nicht geprüft (LeakCheck gerade nicht erreichbar)`, false);
+    }
+    if (result === "unsupported") {
+        return breachItem(`${who}: nicht prüfbar (LeakCheck unterstützt nur Buchstaben a–z, Ziffern und . _ -)`, false);
     }
     if (result.found === 0) {
         return breachItem(`${who}: in keinem bekannten Leak`, false);
@@ -990,9 +1086,10 @@ breachButton.addEventListener("click", async () => {
         return;
     }
 
-    const checks = collectBreachChecks(breachUsernames.checked);
+    const { checks, unsupported } = collectBreachChecks(breachUsernames.checked);
     if (checks.length === 0) {
         breachError.textContent = "Keine E-Mails oder Benutzernamen zum Prüfen gefunden.";
+        if (unsupported.length) breachList.append(unsupportedItem(unsupported));
         return;
     }
 
@@ -1003,7 +1100,8 @@ breachButton.addEventListener("click", async () => {
     try {
         // Der Reihe nach, LeakCheck erlaubt nur 1 Anfrage pro Sekunde für den ganzen Server
         for (let i = 0; i < checks.length; i++) {
-            breachProgress.textContent = `Prüfe ${i + 1} von ${checks.length} …`;
+            breachProgressBase = `Prüfe ${i + 1} von ${checks.length} …`;
+            showBreachProgress(null);
             const result = await checkOneAccount(checks[i]);
             if (result === "locked") {
                 lockVault(LOCKED_MESSAGE);
@@ -1014,6 +1112,7 @@ breachButton.addEventListener("click", async () => {
             if (result && result.found > 0) hits++;
             breachList.append(describeBreach(checks[i], result));
         }
+        if (unsupported.length) breachList.append(unsupportedItem(unsupported));
         breachProgress.textContent = hits === 0
             ? `Fertig: ${checks.length} geprüft, nichts gefunden.`
             : `Fertig: ${hits} von ${checks.length} in Leaks gefunden. Ändere dort am besten die Passwörter.`;
