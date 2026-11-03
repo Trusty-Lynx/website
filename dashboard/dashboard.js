@@ -873,7 +873,7 @@ totpForm.addEventListener("submit", async (event) => {
 });
 
 
-// ---------- Konten auf Leaks prüfen (Breach-Service, POST /breach/account + GET /breach/account/jobs/{jobId}) ----------
+// ---------- Konten auf Leaks prüfen (Breach-Service, POST /breach/account) ----------
 
 const breachButton = document.getElementById("breach-button");
 const breachUsernames = document.getElementById("breach-usernames");
@@ -881,24 +881,11 @@ const breachProgress = document.getElementById("breach-progress");
 const breachError = document.getElementById("breach-error");
 const breachList = document.getElementById("breach-list");
 
-// Gleiche Grenzen wie im Breach-Service (routes/Validation.kt), sonst gibt es nur 400
+// Gleiche Grenzen wie im Breach-Service (validation/RequestValidation.kt), sonst gibt es nur 400
 const USERNAME_MIN = 3;
 const USERNAME_MAX = 254;
-// 429 beim Anlegen heißt: Queue im Service voll. Nicht endlos wiederholen.
+// Wer länger als 3 s warten müsste, bekommt sofort 429. Nicht endlos wiederholen.
 const BREACH_MAX_RETRIES = 5;
-// Der Service antwortet sofort mit einem Job, das Ergebnis wird abgefragt.
-// Öfter fragen bringt nichts, der Worker schafft eh nur ~1 LeakCheck-Anfrage pro Sekunde.
-const BREACH_POLL_MS = 1500;
-// Danach gibt der Browser für dieses Konto auf. Der Job läuft im Service weiter (bis zu 1 h),
-// beim nächsten Klick kommt das Ergebnis dann meist schon aus dem Cache.
-const BREACH_MAX_WAIT_MS = 3 * 60 * 1000;
-
-// "Prüfe 3 von 7 …", Wartehinweise werden hinten angehängt statt aufzusummieren
-let breachProgressBase = "";
-
-function showBreachProgress(extra) {
-    breachProgress.textContent = extra ? `${breachProgressBase} (${extra})` : breachProgressBase;
-}
 
 // LeakCheck-Hash: SHA-256 über die E-Mail in Kleinbuchstaben, hex, die ersten 24 Zeichen
 async function emailHash(email) {
@@ -906,20 +893,14 @@ async function emailHash(email) {
     return bytesToHex(new Uint8Array(digest)).slice(0, 24);
 }
 
-// LeakCheck durchsucht nur diese Zeichen, alles andere (Leerzeichen, Umlaute, alle anderen Sonderzeichen)
-// lehnt es ab. Am 2026-11-03 mit allen druckbaren ASCII-Zeichen geprüft, gleiche Regel wie routes/Validation.kt.
-const USERNAME_CHARS = /^[A-Za-z0-9._-]+$/;
-
-function hasCheckableLength(name) {
-    return name.length >= USERNAME_MIN && name.length <= USERNAME_MAX;
+function isCheckableUsername(name) {
+    return name.length >= USERNAME_MIN && name.length <= USERNAME_MAX && !/[\u0000-\u001f\u007f]/.test(name);
 }
 
 // Konto-E-Mail + alle verschiedenen "user"-Felder aus den Köpfen, ohne Duplikate.
 // Enthält "@" → E-Mail (nur als Hash), sonst Benutzername (nur mit Zustimmung, geht im Klartext raus).
-// Benutzernamen mit Zeichen, die LeakCheck nicht kann, gehen gar nicht erst raus und landen in unsupported.
 function collectBreachChecks(withUsernames) {
     const checks = new Map();
-    const unsupported = new Set();
     const values = [sessionStorage.getItem("email"), ...items.map((item) => item.user)];
     for (const raw of values) {
         const value = (raw ?? "").trim();
@@ -927,33 +908,23 @@ function collectBreachChecks(withUsernames) {
         if (value.includes("@")) {
             const key = "e:" + value.toLowerCase();
             if (!checks.has(key)) checks.set(key, { type: "email_hash", label: value.toLowerCase() });
-        } else if (withUsernames && hasCheckableLength(value)) {
-            if (!USERNAME_CHARS.test(value)) {
-                unsupported.add(value);
-                continue;
-            }
+        } else if (withUsernames && isCheckableUsername(value)) {
             const key = "u:" + value;
             if (!checks.has(key)) checks.set(key, { type: "username", label: value });
         }
     }
-    return { checks: [...checks.values()], unsupported: [...unsupported] };
+    return [...checks.values()];
 }
 
-function unsupportedItem(names) {
-    return breachItem(`Nicht prüfbar, weil LeakCheck nur Buchstaben a–z, Ziffern und . _ - unterstützt: ${names.join(", ")}`, false);
-}
-
-// Beide Endpunkte wollen Login-Token und Tresor-Token, der Job-Abruf genauso wie das Anlegen
-function breachRequest(method, path, body) {
-    const headers = {
-        "Authorization": "Bearer " + loginToken,
-        "X-Vault-Token": vaultToken,
-    };
-    if (body) headers["Content-Type"] = "application/json";
-    return fetch(BREACH_BASE + path, {
-        method: method,
-        headers: headers,
-        body: body ? JSON.stringify(body) : undefined,
+function breachRequest(body) {
+    return fetch(BREACH_BASE + "/breach/account", {
+        method: "POST",
+        headers: {
+            "Authorization": "Bearer " + loginToken,
+            "X-Vault-Token": vaultToken,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
     });
 }
 
@@ -961,73 +932,30 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Ergebnis: { found, fields, sources } bei Erfolg, null = nicht geprüft (Job failed, Queue voll, zu lange gewartet),
-// "unsupported" = LeakCheck kann den Namen nicht durchsuchen (400), "locked" = Tresor gesperrt, dann bricht die Prüfung ab
+// Ergebnis: { found, fields, sources } bei Erfolg, null = nicht geprüft (502, zu oft 429),
+// "locked" = Tresor gesperrt, dann bricht die Prüfung ab
 async function checkOneAccount(check) {
     const value = check.type === "email_hash" ? await emailHash(check.label) : check.label;
-    const job = await submitBreachJob(check.type, value);
-    if (job === null || job === "locked" || job === "unsupported") return job;
-    return await awaitBreachJob(job);
-}
 
-// Legt den Job an. Antwort ist sofort 202 mit { jobId, status, ... }, bei Cache-Treffer schon mit status "done".
-async function submitBreachJob(type, value) {
     for (let attempt = 0; attempt <= BREACH_MAX_RETRIES; attempt++) {
         if (!vaultToken) return "locked";
-        const response = await breachRequest("POST", "/breach/account", { type: type, value: value });
+        const response = await breachRequest({ type: check.type, value: value });
 
         if (response.ok) {
             return await response.json();
         }
         if (response.status === 429) {
             const seconds = Number(response.headers.get("Retry-After")) || 2;
-            showBreachProgress(`Service ausgelastet, warte ${seconds} s …`);
+            breachProgress.textContent += ` (warte ${seconds} s …)`;
             await sleep(seconds * 1000);
             continue;
         }
         // readVaultError leitet bei 401 unauthorized (Login abgelaufen) schon zum Login weiter
         const errorCode = await readVaultError(response);
         if (errorCode === "vault_locked") return "locked";
-        // 400: Der Breach-Service lehnt Namen ab, die LeakCheck nicht durchsuchen kann (Leerzeichen, Umlaute, Sonderzeichen).
-        // Ein neuer Versuch ändert daran nichts.
-        if (response.status === 400) return "unsupported";
         return null;
     }
     return null;
-}
-
-// Fragt den Job ab, bis er done oder failed ist. Der Service wiederholt LeakCheck selbst (429, Ausfall),
-// der Browser muss nur warten und darf nicht vorher abbrechen.
-async function awaitBreachJob(job) {
-    const deadline = Date.now() + BREACH_MAX_WAIT_MS;
-    while (true) {
-        if (job.status === "done") return job.result;
-        if (job.status === "failed") return null;
-        if (Date.now() > deadline) return null;
-
-        showBreachProgress(job.status === "waiting_for_upstream"
-            ? `LeakCheck antwortet gerade nicht, Versuch ${job.attempts} …`
-            : null);
-        await sleep(nextBreachPoll(job));
-
-        if (!vaultToken) return "locked";
-        const response = await breachRequest("GET", "/breach/account/jobs/" + encodeURIComponent(job.jobId));
-        if (!response.ok) {
-            const errorCode = await readVaultError(response);
-            if (errorCode === "vault_locked") return "locked";
-            // 404: Job weg, z. B. weil der Service neu gestartet wurde (die Queue liegt nur im Speicher)
-            return null;
-        }
-        job = await response.json();
-    }
-}
-
-// Beim Warten auf LeakCheck steht in nextAttemptAt, wann der nächste Versuch kommt. Vorher fragen ist sinnlos,
-// aber höchstens 10 s still sein, damit die Anzeige nicht hängt.
-function nextBreachPoll(job) {
-    if (!job.nextAttemptAt) return BREACH_POLL_MS;
-    const untilRetry = Date.parse(job.nextAttemptAt) - Date.now();
-    return Math.min(Math.max(untilRetry, BREACH_POLL_MS), 10_000);
 }
 
 function breachItem(text, hit) {
@@ -1041,9 +969,6 @@ function describeBreach(check, result) {
     const who = check.label;
     if (result === null) {
         return breachItem(`${who}: nicht geprüft (LeakCheck gerade nicht erreichbar)`, false);
-    }
-    if (result === "unsupported") {
-        return breachItem(`${who}: nicht prüfbar (LeakCheck unterstützt nur Buchstaben a–z, Ziffern und . _ -)`, false);
     }
     if (result.found === 0) {
         return breachItem(`${who}: in keinem bekannten Leak`, false);
@@ -1065,10 +990,9 @@ breachButton.addEventListener("click", async () => {
         return;
     }
 
-    const { checks, unsupported } = collectBreachChecks(breachUsernames.checked);
+    const checks = collectBreachChecks(breachUsernames.checked);
     if (checks.length === 0) {
         breachError.textContent = "Keine E-Mails oder Benutzernamen zum Prüfen gefunden.";
-        if (unsupported.length) breachList.append(unsupportedItem(unsupported));
         return;
     }
 
@@ -1079,8 +1003,7 @@ breachButton.addEventListener("click", async () => {
     try {
         // Der Reihe nach, LeakCheck erlaubt nur 1 Anfrage pro Sekunde für den ganzen Server
         for (let i = 0; i < checks.length; i++) {
-            breachProgressBase = `Prüfe ${i + 1} von ${checks.length} …`;
-            showBreachProgress(null);
+            breachProgress.textContent = `Prüfe ${i + 1} von ${checks.length} …`;
             const result = await checkOneAccount(checks[i]);
             if (result === "locked") {
                 lockVault(LOCKED_MESSAGE);
@@ -1091,7 +1014,6 @@ breachButton.addEventListener("click", async () => {
             if (result && result.found > 0) hits++;
             breachList.append(describeBreach(checks[i], result));
         }
-        if (unsupported.length) breachList.append(unsupportedItem(unsupported));
         breachProgress.textContent = hits === 0
             ? `Fertig: ${checks.length} geprüft, nichts gefunden.`
             : `Fertig: ${hits} von ${checks.length} in Leaks gefunden. Ändere dort am besten die Passwörter.`;
