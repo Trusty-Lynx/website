@@ -1,0 +1,7 @@
+.vault-header { display: flex; justify-content: space-between; align-items: center; }
+.add-form { max-width: 400px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.error { color: #c0392b; min-height: 1em; }
+.danger { color: #c0392b; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }

@@ -1,1 +1,87 @@
-<p>tresor works!</p>
+<section class="vault">
+  <div class="vault-header">
+    <h1>Tresor</h1>
+    @if (!formOpen()) {
+      <button type="button" (click)="openForm(null)">Passwort hinzufügen</button>
+    }
+  </div>
+
+  <p class="error" role="alert">{{ vault.error() }}</p>
+
+  @if (formOpen()) {
+    <form class="add-form" novalidate
+      (submit)="save($event, title.value, url.value, user.value, password.value, alg.value)">
+      <h2>{{ editing() ? 'Eintrag bearbeiten' : 'Passwort hinzufügen' }}</h2>
+      <div class="field">
+        <label for="add-title">Titel</label>
+        <input #title id="add-title" type="text" required [value]="editing()?.title ?? ''">
+      </div>
+      <div class="field">
+        <label for="add-url">Website</label>
+        <input #url id="add-url" type="text" placeholder="z. B. google.com" [value]="editing()?.url ?? ''">
+      </div>
+      <div class="field">
+        <label for="add-user">Benutzername</label>
+        <input #user id="add-user" type="text" autocomplete="off" [value]="editing()?.user ?? ''">
+      </div>
+      <div class="field">
+        <label for="add-password">Passwort</label>
+        <input #password id="add-password" type="password" autocomplete="new-password" required [value]="formPassword()">
+      </div>
+      <div class="field">
+        <label for="add-alg">Verschlüsselung auf dem Server</label>
+        <select #alg id="add-alg" [value]="editing()?.alg ?? 'chacha'">
+          <option value="chacha">ChaCha20-Poly1305</option>
+          <option value="aes">AES-256-GCM</option>
+        </select>
+      </div>
+      <p class="error" role="alert">{{ formError() }}</p>
+      <button type="submit" [disabled]="busy()">Speichern</button>
+      <button type="button" (click)="closeForm()">Abbrechen</button>
+      @if (editing()) {
+        <button type="button" class="danger" [disabled]="busy()" (click)="remove()">Löschen</button>
+      }
+    </form>
+  } @else if (vault.items().length === 0) {
+    <p>Noch keine Einträge vorhanden.</p>
+  } @else {
+    <table>
+      <thead>
+        <tr>
+          <th>Titel</th>
+          <th>Website</th>
+          <th>Benutzername</th>
+          <th>Passwort</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of vault.items(); track item.id) {
+          <tr>
+            <td>{{ item.title }}</td>
+            <td>{{ item.url }}</td>
+            <td>{{ item.user }}</td>
+            <td>
+              <span>{{ revealed()[item.id] ?? '••••••••' }}</span>
+              <button type="button" (click)="copySecret(item)" title="Passwort kopieren">
+                {{ copiedId() === item.id ? '✓' : 'Kopieren' }}
+              </button>
+              <button type="button" (click)="toggleSecret(item)">
+                {{ revealed()[item.id] !== undefined ? 'Verbergen' : 'Anzeigen' }}
+              </button>
+            </td>
+            <td><button type="button" (click)="openForm(item)">Bearbeiten</button></td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</section>
+
+<dialog #deleteDialog>
+  <p>Eintrag wirklich löschen?</p>
+  <form method="dialog">
+    <button value="delete" class="danger">Löschen</button>
+    <button value="cancel">Abbrechen</button>
+  </form>
+</dialog>

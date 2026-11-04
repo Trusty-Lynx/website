@@ -1,8 +1,8 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { AuthService } from './auth.service';
-import { VAULT_BASE } from './config';
+import { BREACH_BASE, VAULT_BASE } from './config';
 import {
-  KDF, Kdf, base64ToBytes, bytesToBase64, decryptPart, deriveVaultKeys, isDefaultKdf, unwrapDek, wrapDek,
+  KDF, Kdf, base64ToBytes, bytesToBase64, decryptPart, deriveVaultKeys, encryptPart, isDefaultKdf, unwrapDek, wrapDek,
 } from './crypto';
 
 export interface VaultItem {
@@ -20,7 +20,13 @@ interface Head {
   user: string;
 }
 
-const LOCKED_MESSAGE = 'Der Tresor wurde gesperrt. Bitte gib dein Masterpasswort erneut ein.';
+// Eingaben aus dem Formular "Passwort hinzufügen / Eintrag bearbeiten"
+export interface ItemInput extends Head {
+  password: string;
+  alg: string;
+}
+
+export const LOCKED_MESSAGE = 'Der Tresor wurde gesperrt. Bitte gib dein Masterpasswort erneut ein.';
 const AUTO_LOCK_MS = 15 * 60 * 1000;
 
 export function vaultErrorMessage(errorCode: string | undefined, fallback: string): string {
@@ -79,7 +85,7 @@ export class VaultService {
     });
   }
 
-  private async readError(response: Response): Promise<string | undefined> {
+  async readError(response: Response): Promise<string | undefined> {
     const data = await response.json().catch(() => ({}));
     console.warn('Vault-Fehler', response.status, data.error, data.reason || '',
       'X-Request-ID:', response.headers.get('X-Request-ID'));
@@ -87,6 +93,22 @@ export class VaultService {
       this.auth.goToLogin(true);
     }
     return data.error;
+  }
+
+  // Für den Breach-Service: der will Login-Token und Tresor-Token. null = Tresor gesperrt
+  breachRequest(body: object): Promise<Response> | null {
+    if (!this.vaultToken) {
+      return null;
+    }
+    return fetch(BREACH_BASE + '/breach/account', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + this.auth.loginToken,
+        'X-Vault-Token': this.vaultToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
   }
 
   // 'create' = es gibt noch keinen Tresor, 'unlock' = Tresor vorhanden, null = Fehler (steht in lockMessage)
@@ -204,7 +226,7 @@ export class VaultService {
   }
 
   // Schlüssel vergessen und Sperrbildschirm zeigen
-  private forget(message: string): void {
+  forget(message: string): void {
     clearTimeout(this.autoLockTimer);
     this.vaultToken = null;
     this.dek = null;
@@ -285,6 +307,73 @@ export class VaultService {
         ? 'Passwort konnte nicht entschlüsselt werden.'
         : 'Tresor-Server nicht erreichbar.');
       return null;
+    }
+  }
+
+  // editing = null → neuer Eintrag, sonst wird dieser Eintrag überschrieben.
+  // Rückgabe: null = geklappt, 'close' = Formular schließen (woanders geändert oder Tresor gesperrt), sonst Fehlermeldung
+  async saveItem(editing: VaultItem | null, input: ItemInput): Promise<string | null> {
+    try {
+      const itemId = editing ? editing.id : crypto.randomUUID();
+      const rev = editing ? editing.rev + 1 : 1;
+      const userId = this.auth.userId;
+
+      const head = await encryptPart(this.dek!, { title: input.title, url: input.url, user: input.user }, userId, itemId, 'h', rev);
+      const secret = await encryptPart(this.dek!, { pw: input.password }, userId, itemId, 's', rev);
+
+      const response = await this.request('PUT', '/items', {
+        rev: rev,
+        head: bytesToBase64(head),
+        secret: bytesToBase64(secret),
+        // Welcher Crypto-Service Schicht 2 macht. Wechsel beim Bearbeiten: der Vault verschlüsselt einfach neu.
+        alg: input.alg,
+      }, itemId);
+
+      if (response.status === 409) {
+        await this.loadItems();
+        this.error.set('Der Eintrag wurde inzwischen woanders geändert. Bitte prüfe ihn und bearbeite ihn erneut.');
+        return 'close';
+      }
+      if (!response.ok) {
+        const errorCode = await this.readError(response);
+        if (errorCode === 'vault_locked') {
+          this.forget(LOCKED_MESSAGE);
+          return 'close';
+        }
+        return vaultErrorMessage(errorCode, 'Eintrag konnte nicht gespeichert werden.');
+      }
+
+      const saved: VaultItem = { id: itemId, rev: rev, title: input.title, url: input.url, user: input.user, alg: input.alg };
+      this.items.update((items) => editing
+        ? items.map((other) => (other.id === itemId ? saved : other))
+        : [...items, saved]);
+      return null;
+    } catch (error) {
+      console.error(error);
+      return 'Tresor-Server nicht erreichbar.';
+    }
+  }
+
+  // Rückgabe: null = geklappt, sonst Fehlermeldung
+  async deleteItem(item: VaultItem): Promise<string | null> {
+    try {
+      const response = await this.request('DELETE', '/items', undefined, item.id);
+
+      // 404: schon weg, ist auch in Ordnung
+      if (!response.ok && response.status !== 404) {
+        const errorCode = await this.readError(response);
+        if (errorCode === 'vault_locked') {
+          this.forget(LOCKED_MESSAGE);
+          return null;
+        }
+        return vaultErrorMessage(errorCode, 'Eintrag konnte nicht gelöscht werden.');
+      }
+
+      this.items.update((items) => items.filter((other) => other.id !== item.id));
+      return null;
+    } catch (error) {
+      console.error(error);
+      return 'Tresor-Server nicht erreichbar.';
     }
   }
 }

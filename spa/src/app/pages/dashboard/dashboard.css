@@ -1,0 +1,9 @@
+.cards { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
+.cards .card { flex: 1; min-width: 180px; }
+.card { padding: 16px; border: 1px solid #ccc; border-radius: 8px; }
+.card-value { font-size: 1.5em; font-weight: bold; }
+.breach-header { display: flex; justify-content: space-between; align-items: center; }
+.checkbox { display: flex; gap: 8px; }
+.error { color: #c0392b; min-height: 1em; }
+.hit { color: #c0392b; }
+.powered { font-size: 0.8em; color: #666; }

@@ -7,6 +7,8 @@ export class AuthService {
   readonly loginToken = sessionStorage.getItem('loginToken');
   readonly userId = sessionStorage.getItem('userId') ?? '';
   readonly email = sessionStorage.getItem('email') ?? '';
+  // Zeitpunkt des vorletzten Logins (ms), leer beim ersten Login. Setzt Login.js
+  readonly previousLogin = sessionStorage.getItem('previousLogin') ?? '';
 
   isLoggedIn(): boolean {
     return this.loginToken !== null;
