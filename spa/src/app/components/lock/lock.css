@@ -1,4 +1,31 @@
-.lock-box { max-width: 360px; margin: 40px auto; padding: 24px; border: 1px solid #ccc; border-radius: 8px; }
-.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.checkbox { display: flex; gap: 8px; margin-bottom: 12px; }
-.error { color: #c0392b; min-height: 1em; }
+:host {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 48px);
+}
+
+.lock-box {
+    width: 100%;
+    max-width: 380px;
+    background: white;
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.lock-title {
+    margin: 0 0 24px;
+    font-size: 20px;
+    text-align: center;
+}
+
+@media (max-width: 480px) {
+    :host {
+        min-height: auto;
+    }
+
+    .lock-box {
+        padding: 20px;
+    }
+}

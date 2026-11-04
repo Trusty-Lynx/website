@@ -1,8 +1,11 @@
-<section class="vault">
-  <div class="vault-header">
-    <h1>Tresor</h1>
+<h1 class="page-title">Tresor</h1>
+<p class="page-subtitle">Deine Passwörter, verschlüsselt mit deinem Masterpasswort.</p>
+
+<section class="card vault">
+  <div class="section-header">
+    <h2 class="section-title">Einträge</h2>
     @if (!formOpen()) {
-      <button type="button" (click)="openForm(null)">Passwort hinzufügen</button>
+      <button class="btn primary btn-inline" type="button" (click)="openForm(null)">Passwort hinzufügen</button>
     }
   </div>
 
@@ -11,7 +14,7 @@
   @if (formOpen()) {
     <form class="add-form" novalidate
       (submit)="save($event, title.value, url.value, user.value, password.value, alg.value)">
-      <h2>{{ editing() ? 'Eintrag bearbeiten' : 'Passwort hinzufügen' }}</h2>
+      <h3 class="form-title">{{ editing() ? 'Eintrag bearbeiten' : 'Passwort hinzufügen' }}</h3>
       <div class="field">
         <label for="add-title">Titel</label>
         <input #title id="add-title" type="text" required [value]="editing()?.title ?? ''">
@@ -36,16 +39,18 @@
         </select>
       </div>
       <p class="error" role="alert">{{ formError() }}</p>
-      <button type="submit" [disabled]="busy()">Speichern</button>
-      <button type="button" (click)="closeForm()">Abbrechen</button>
-      @if (editing()) {
-        <button type="button" class="danger" [disabled]="busy()" (click)="remove()">Löschen</button>
-      }
+      <div class="form-actions">
+        <button class="btn primary btn-inline" type="submit" [disabled]="busy()">Speichern</button>
+        <button class="btn secondary btn-inline" type="button" (click)="closeForm()">Abbrechen</button>
+        @if (editing()) {
+          <button class="btn btn-danger btn-inline delete" type="button" [disabled]="busy()" (click)="remove()">Löschen</button>
+        }
+      </div>
     </form>
   } @else if (vault.items().length === 0) {
-    <p>Noch keine Einträge vorhanden.</p>
+    <p class="muted">Noch keine Einträge vorhanden.</p>
   } @else {
-    <table>
+    <table class="vault-table">
       <thead>
         <tr>
           <th>Titel</th>
@@ -58,19 +63,33 @@
       <tbody>
         @for (item of vault.items(); track item.id) {
           <tr>
-            <td>{{ item.title }}</td>
-            <td>{{ item.url }}</td>
-            <td>{{ item.user }}</td>
-            <td>
-              <span>{{ revealed()[item.id] ?? '••••••••' }}</span>
-              <button type="button" (click)="copySecret(item)" title="Passwort kopieren">
-                {{ copiedId() === item.id ? '✓' : 'Kopieren' }}
+            <td data-label="Titel">{{ item.title }}</td>
+            <td data-label="Website">{{ item.url }}</td>
+            <td data-label="Benutzername">{{ item.user }}</td>
+            <td data-label="Passwort">
+              <span class="password">{{ revealed()[item.id] ?? '••••••••' }}</span>
+              <button class="icon-button" type="button" (click)="copySecret(item)"
+                title="Passwort kopieren" aria-label="Passwort kopieren">
+                @if (copiedId() === item.id) {
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M5 12.5L10 17.5L19 7" />
+                  </svg>
+                } @else {
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                    stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="8.5" y="3.5" width="10" height="13" rx="2.2" />
+                    <path d="M6.6 8.3C6.2 8.7 6 9.1 6 9.6V19.5C6 20.3 6.7 21 7.5 21H14.2C15 21 15.7 20.3 15.7 19.5V18.6" />
+                  </svg>
+                }
               </button>
-              <button type="button" (click)="toggleSecret(item)">
+              <button class="link-button" type="button" (click)="toggleSecret(item)">
                 {{ revealed()[item.id] !== undefined ? 'Verbergen' : 'Anzeigen' }}
               </button>
             </td>
-            <td><button type="button" (click)="openForm(item)">Bearbeiten</button></td>
+            <td class="actions">
+              <button class="link-button" type="button" (click)="openForm(item)">Bearbeiten</button>
+            </td>
           </tr>
         }
       </tbody>
@@ -78,10 +97,11 @@
   }
 </section>
 
-<dialog #deleteDialog>
-  <p>Eintrag wirklich löschen?</p>
-  <form method="dialog">
-    <button value="delete" class="danger">Löschen</button>
-    <button value="cancel">Abbrechen</button>
+<dialog #deleteDialog class="dialog">
+  <h2 class="dialog-title">Eintrag löschen?</h2>
+  <p class="muted">Der Eintrag wird endgültig aus deinem Tresor entfernt.</p>
+  <form method="dialog" class="form-actions">
+    <button class="btn btn-delete btn-inline" value="delete">Löschen</button>
+    <button class="btn secondary btn-inline" value="cancel">Abbrechen</button>
   </form>
 </dialog>

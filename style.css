@@ -147,3 +147,39 @@ input {
     color: #333333;
     overflow-wrap: anywhere;
 }
+
+/*Responsiv: Handy*/
+
+@media (max-width: 480px) {
+    .screen {
+        align-items: flex-start;
+        padding: 12px;
+    }
+
+    .card {
+        padding: 20px;
+        box-shadow: none;
+    }
+
+    .logo img {
+        width: 56px;
+        height: 56px;
+    }
+
+    h1 {
+        font-size: 18px;
+    }
+
+    .auth-subtitle {
+        margin-bottom: 16px;
+    }
+}
+
+/*Responsiv: große Bildschirme*/
+
+@media (min-width: 1200px) {
+    .card {
+        max-width: 420px;
+        padding: 40px;
+    }
+}

@@ -44,7 +44,7 @@ export function vaultErrorMessage(errorCode: string | undefined, fallback: strin
 }
 
 // Hält Tresor-Token und Tresorschlüssel (DEK). Der Service lebt, solange die SPA offen ist,
-// deshalb bleibt der Tresor beim Wechsel zwischen Dashboard, Tresor und Einstellungen entsperrt.
+// deshalb bleibt der Tresor beim Wechsel zwischen Dashboard und Tresor entsperrt.
 @Injectable({ providedIn: 'root' })
 export class VaultService {
   private auth = inject(AuthService);

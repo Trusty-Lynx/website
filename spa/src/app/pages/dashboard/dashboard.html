@@ -1,40 +1,41 @@
-<h1>Hallo!</h1>
-<p>Schön, dass du wieder da bist. Hier ist ein Überblick über deinen Tresor.</p>
+<h1 class="page-title">Hallo!</h1>
+<p class="page-subtitle">Schön, dass du wieder da bist. Hier ist ein Überblick über deinen Tresor.</p>
 
 <section class="cards">
   <article class="card">
-    <h2>Gespeicherte Passwörter</h2>
+    <h2 class="card-title">Gespeicherte Passwörter</h2>
     <p class="card-value">{{ vault.items().length }}</p>
   </article>
 
   <article class="card">
-    <h2>Letzter Login</h2>
+    <h2 class="card-title">Letzter Login</h2>
     <p class="card-value">{{ lastLogin }}</p>
   </article>
 
   <article class="card">
-    <h2>Tresor</h2>
-    <button type="button" (click)="vault.lock()">Tresor sperren</button>
+    <h2 class="card-title">Tresor</h2>
+    <button class="btn primary btn-inline" type="button" (click)="vault.lock()">Tresor sperren</button>
   </article>
 </section>
 
 <section class="card">
-  <div class="breach-header">
-    <h2>Konten auf Leaks prüfen</h2>
-    <button type="button" [disabled]="breach.running()" (click)="breach.run(withUsernames.checked)">Jetzt prüfen</button>
+  <div class="section-header">
+    <h2 class="section-title">Konten auf Leaks prüfen</h2>
+    <button class="btn primary btn-inline" type="button" [disabled]="breach.running()"
+      (click)="breach.run(withUsernames.checked)">Jetzt prüfen</button>
   </div>
-  <p>Prüft deine Konto-E-Mail und die E-Mails aus deinem Tresor gegen bekannte Datenlecks.
+  <p class="muted">Prüft deine Konto-E-Mail und die E-Mails aus deinem Tresor gegen bekannte Datenlecks.
     E-Mails verlassen dein Gerät nur als gekürzter Hash.</p>
-  <label class="checkbox">
+  <label class="checkbox consent">
     <input #withUsernames type="checkbox">
     Auch Benutzernamen prüfen (werden an LeakCheck übermittelt)
   </label>
 
   @if (breach.progress()) {
-    <p>{{ breach.progress() }}</p>
+    <p class="muted">{{ breach.progress() }}</p>
   }
   <p class="error" role="alert">{{ breach.error() }}</p>
-  <ul>
+  <ul class="breach-list">
     @for (line of breach.lines(); track $index) {
       <li [class.hit]="line.hit">{{ line.text }}</li>
     }
