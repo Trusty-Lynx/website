@@ -1,0 +1,7 @@
+
+.layout { display: flex; min-height: 100vh; }
+.sidebar { width: 200px; display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #1e1e2e; }
+.sidebar h2 { color: white; }
+.sidebar a { color: #ccc; text-decoration: none; padding: 8px; }
+.sidebar a.active { background: #333; color: white; }
+.content { flex: 1; padding: 24px; }
