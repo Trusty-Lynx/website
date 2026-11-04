@@ -1,4 +1,3 @@
-
 import { Routes } from '@angular/router';
 import { Dashboard } from './pages/dashboard/dashboard';
 import { Tresor } from './pages/tresor/tresor';

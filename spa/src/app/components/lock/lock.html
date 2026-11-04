@@ -1,0 +1,41 @@
+<div class="lock-box">
+  @if (vault.lockMessage()) {
+    <p class="error">{{ vault.lockMessage() }}</p>
+  }
+
+  @if (mode() === 'loading') {
+    <p>Tresor wird geladen …</p>
+  }
+
+  @if (mode() === 'unlock') {
+    <form (submit)="unlock($event, unlockPassword)" novalidate>
+      <h2>Tresor entsperren</h2>
+      <div class="field">
+        <label for="unlock-password">Masterpasswort</label>
+        <input #unlockPassword id="unlock-password" type="password" autocomplete="current-password" required>
+      </div>
+      <p class="error" role="alert">{{ error() }}</p>
+      <button type="submit" [disabled]="busy()">Entsperren</button>
+    </form>
+  }
+
+  @if (mode() === 'create') {
+    <form (submit)="create($event, createPassword.value, createPasswordConfirm.value, createConfirm.checked)" novalidate>
+      <h2>Tresor erstellen</h2>
+      <div class="field">
+        <label for="create-password">Masterpasswort</label>
+        <input #createPassword id="create-password" type="password" autocomplete="new-password" required>
+      </div>
+      <div class="field">
+        <label for="create-password-confirm">Masterpasswort wiederholen</label>
+        <input #createPasswordConfirm id="create-password-confirm" type="password" autocomplete="new-password" required>
+      </div>
+      <label class="checkbox">
+        <input #createConfirm type="checkbox">
+        Ein vergessenes Masterpasswort kann niemand wiederherstellen.
+      </label>
+      <p class="error" role="alert">{{ error() }}</p>
+      <button type="submit" [disabled]="busy()">Tresor erstellen</button>
+    </form>
+  }
+</div>

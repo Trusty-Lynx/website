@@ -111,7 +111,7 @@ form.addEventListener("submit", async (event) => {
         sessionStorage.setItem("previousLogin", localStorage.getItem(lastLoginKey) || "");
         localStorage.setItem(lastLoginKey, Date.now().toString());
         passwordInput.value = "";
-        window.location.href = "Dashboard.html";
+        window.location.href = "/app/";
 
     } catch (error) {
         console.error(error);

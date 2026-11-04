@@ -1,13 +1,21 @@
-
 <div class="layout">
   <nav class="sidebar">
     <h2>Trusty Lynx</h2>
     <a routerLink="/dashboard" routerLinkActive="active">Dashboard</a>
     <a routerLink="/tresor" routerLinkActive="active">Tresor</a>
     <a routerLink="/einstellungen" routerLinkActive="active">Einstellungen</a>
+
+    @if (vault.unlocked()) {
+      <button type="button" (click)="vault.lock()">Tresor sperren</button>
+    }
+    <button type="button" (click)="auth.logout()">Abmelden</button>
   </nav>
 
   <main class="content">
-    <router-outlet />
+    @if (vault.unlocked()) {
+      <router-outlet />
+    } @else {
+      <app-lock />
+    }
   </main>
 </div>

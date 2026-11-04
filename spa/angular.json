@@ -42,9 +42,21 @@
                   "maximumError": "8kB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "baseHref": "/app/"
             },
             "development": {
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public"
+                },
+                {
+                  "glob": "*.{html,js,css,png}",
+                  "input": "dev-mpa",
+                  "output": "/"
+                }
+              ],
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true

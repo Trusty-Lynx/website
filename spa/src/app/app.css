@@ -1,4 +1,3 @@
-
 .layout { display: flex; min-height: 100vh; }
 .sidebar { width: 200px; display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #1e1e2e; }
 .sidebar h2 { color: white; }
