@@ -1,0 +1,52 @@
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.card-value {
+    margin: 0;
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.section-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 18px;
+}
+
+.consent {
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.breach-list {
+    margin: 0 0 12px;
+    padding-left: 20px;
+    font-size: 14px;
+}
+
+.breach-list li {
+    margin-bottom: 6px;
+    overflow-wrap: anywhere;
+}
+
+.hit {
+    color: #cc0000;
+}
+
+.powered {
+    margin: 0;
+    font-size: 12px;
+    color: #6b7280;
+}
