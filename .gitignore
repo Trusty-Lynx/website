@@ -1,2 +1,5 @@
 # Lokale IntelliJ-Einstellungen
 .idea/
+
+# Eigene Repos der Backend-Services, nicht Teil der Website
+backend/
