@@ -135,7 +135,7 @@ form.addEventListener("submit", async (event) => {
         localStorage.setItem("lastLogin:" + data.userId, Date.now().toString());
         passwordInput.value = "";
         passwordConfirmInput.value = "";
-        window.location.href = "Dashboard.html";
+        window.location.href = "/app/";
 
 
     } catch (error) {

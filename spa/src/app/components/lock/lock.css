@@ -1,0 +1,31 @@
+:host {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 48px);
+}
+
+.lock-box {
+    width: 100%;
+    max-width: 380px;
+    background: white;
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.lock-title {
+    margin: 0 0 24px;
+    font-size: 20px;
+    text-align: center;
+}
+
+@media (max-width: 480px) {
+    :host {
+        min-height: auto;
+    }
+
+    .lock-box {
+        padding: 20px;
+    }
+}
