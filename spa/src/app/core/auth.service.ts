@@ -14,15 +14,6 @@ export class AuthService {
     return this.loginToken !== null;
   }
 
-  vaultSessionId(): string {
-    let id = sessionStorage.getItem('vaultSessionId');
-    if (!id) {
-      id = crypto.randomUUID();
-      sessionStorage.setItem('vaultSessionId', id);
-    }
-    return id;
-  }
-
   goToLogin(expired = false): void {
     sessionStorage.clear();
     window.location.href = LOGIN_PAGE + (expired ? '?abgelaufen' : '');
