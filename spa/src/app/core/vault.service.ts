@@ -70,10 +70,8 @@ export class VaultService {
   // Der Tresor läuft komplett über GraphQL (POST /graphql am Vault-Service), Auth und Breach bleiben REST.
   private async query<T>(query: string, variables: object = {}): Promise<QueryResult<T>> {
     const headers: Record<string, string> = {
+      // Wer anfragt, ermittelt der Vault-Service allein aus dem Login-Token
       'Authorization': 'Bearer ' + this.auth.loginToken,
-      // Platzhalter, solange es kein Gateway gibt
-      'X-User-Id': this.auth.userId,
-      'X-Session-Id': this.auth.vaultSessionId(),
       'Content-Type': 'application/json',
     };
     if (this.vaultToken) {
