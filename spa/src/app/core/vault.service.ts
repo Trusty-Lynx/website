@@ -62,8 +62,6 @@ export class VaultService {
   private async query<T>(query: string, variables: object = {}): Promise<QueryResult<T>> {
     const headers: Record<string, string> = {
       'Authorization': 'Bearer ' + this.auth.loginToken,
-      'X-User-Id': this.auth.userId,
-      'X-Session-Id': this.auth.vaultSessionId(),
       'Content-Type': 'application/json',
     };
     if (this.vaultToken) {
