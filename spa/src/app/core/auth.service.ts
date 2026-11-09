@@ -1,13 +1,11 @@
 import { Injectable } from '@angular/core';
 import { API_BASE, LOGIN_PAGE } from './config';
 
-// Die MPA (Login.js) legt Token und userId im sessionStorage ab, die SPA liest sie hier
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   readonly loginToken = sessionStorage.getItem('loginToken');
   readonly userId = sessionStorage.getItem('userId') ?? '';
   readonly email = sessionStorage.getItem('email') ?? '';
-  // Zeitpunkt des vorletzten Logins (ms), leer beim ersten Login. Setzt Login.js
   readonly previousLogin = sessionStorage.getItem('previousLogin') ?? '';
 
   isLoggedIn(): boolean {

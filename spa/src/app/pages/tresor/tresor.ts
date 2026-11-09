@@ -9,17 +9,13 @@ import { VaultItem, VaultService } from '../../core/vault.service';
 export class Tresor {
   protected vault = inject(VaultService);
 
-  // Formular: geschlossen, neuer Eintrag oder ein bestehender Eintrag wird bearbeitet
   protected formOpen = signal(false);
   protected editing = signal<VaultItem | null>(null);
-  // Passwort, das beim Bearbeiten ins Formular kommt
   protected formPassword = signal('');
   protected formError = signal('');
   protected busy = signal(false);
 
-  // Angezeigte Passwörter (id → Klartext), nur solange "Anzeigen" aktiv ist
   protected revealed = signal<Record<string, string>>({});
-  // Eintrag, bei dem gerade das Häkchen nach dem Kopieren zu sehen ist
   protected copiedId = signal<string | null>(null);
 
   private deleteDialog = viewChild.required<ElementRef<HTMLDialogElement>>('deleteDialog');
@@ -35,7 +31,6 @@ export class Tresor {
     }
   }
 
-  // Passwort in die Zwischenablage, nach 30 s wieder löschen
   async copySecret(item: VaultItem) {
     const password = await this.vault.fetchSecret(item);
     if (password === null) {
@@ -58,7 +53,6 @@ export class Tresor {
     this.editing.set(item);
 
     if (item) {
-      // Das Passwort kommt nur auf diesen Klick vom Vault, wie bei "Anzeigen"
       const password = await this.vault.fetchSecret(item);
       if (password === null) {
         return;
@@ -97,7 +91,6 @@ export class Tresor {
     this.closeForm();
   }
 
-  // Eigenes Fenster statt confirm(): true bei "Löschen", false bei "Abbrechen" oder Esc
   private confirmDelete(): Promise<boolean> {
     const dialog = this.deleteDialog().nativeElement;
     return new Promise((resolve) => {

@@ -75,7 +75,6 @@
     min-width: 0;
 }
 
-/* Handy und schmale Fenster: Seitenleiste wird zur Leiste oben */
 @media (max-width: 768px) {
     .app {
         grid-template-columns: 1fr;

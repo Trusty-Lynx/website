@@ -1,5 +1,4 @@
-// Nur für lokales Testen: Login/Register (MPA) in dev-mpa/ kopieren, damit ng serve sie
-// unter derselben Adresse wie die SPA ausliefert (gemeinsamer sessionStorage).
+
 import { cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 
 rmSync('dev-mpa', { recursive: true, force: true });

@@ -9,7 +9,6 @@ import { VaultService } from '../../core/vault.service';
 export class Lock {
   protected vault = inject(VaultService);
 
-  // Welches Formular gerade sichtbar ist
   protected mode = signal<'loading' | 'create' | 'unlock' | 'error'>('loading');
   protected error = signal('');
   protected busy = signal(false);

@@ -15,12 +15,10 @@ export class App {
   protected vault = inject(VaultService);
 
   constructor() {
-    // Ohne Login zurück zur MPA
     if (!this.auth.isLoggedIn()) {
       this.auth.goToLogin();
     }
 
-    // Jede Aktivität startet die 15-Minuten-Auto-Sperre neu
     for (const type of ['click', 'keydown', 'mousemove', 'scroll']) {
       document.addEventListener(type, () => this.vault.resetAutoLock(), { passive: true });
     }

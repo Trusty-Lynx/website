@@ -1,7 +1,5 @@
 import { argon2id } from 'hash-wasm';
 
-// Gleiche Krypto wie dashboard/dashboard.js und common.js der MPA
-
 type Bytes = Uint8Array<ArrayBuffer>;
 
 export interface Kdf {
@@ -22,7 +20,6 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
-// kdf vom Server muss genau den Standardwerten entsprechen, sonst könnte ein Server schwächere Parameter unterschieben
 export function isDefaultKdf(kdf: Kdf | null): boolean {
   return kdf !== null && typeof kdf === 'object'
     && kdf.alg === KDF.alg
@@ -32,7 +29,6 @@ export function isDefaultKdf(kdf: Kdf | null): boolean {
     && kdf.len === KDF.len;
 }
 
-// HKDF-SHA256: Salt = 32 × 00, Länge 32 Byte, info = Etikett als UTF-8
 async function hkdf(keyBytes: Bytes, label: string): Promise<Bytes> {
   const key = await crypto.subtle.importKey('raw', keyBytes, 'HKDF', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(

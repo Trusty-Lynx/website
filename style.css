@@ -1,5 +1,3 @@
-/*Hintergrund und Box in der Mitte*/
-
 * {
     box-sizing: border-box;
 }
@@ -26,8 +24,6 @@ body {
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
-
-/*Text-und Eingabefelder */
 
 h1 {
     font-size: 20px;
@@ -73,9 +69,6 @@ input {
     display: flex;
     gap: 8px;
 }
-
-/*Buttons und Hinweise*/
-
 
 .btn {
     width: 100%;
@@ -123,8 +116,6 @@ input {
     margin: 24px 0 0;
 }
 
-/*Zwei-Faktor-Einrichtung*/
-
 .totp-text {
     font-size: 14px;
     margin: 0 0 12px;
@@ -147,8 +138,6 @@ input {
     color: #333333;
     overflow-wrap: anywhere;
 }
-
-/*Responsiv: Handy*/
 
 @media (max-width: 480px) {
     .screen {
@@ -174,8 +163,6 @@ input {
         margin-bottom: 16px;
     }
 }
-
-/*Responsiv: große Bildschirme*/
 
 @media (min-width: 1200px) {
     .card {

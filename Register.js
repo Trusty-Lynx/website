@@ -10,7 +10,6 @@ const totpQr = document.getElementById("totp-qr");
 const totpSecretText = document.getElementById("totp-secret");
 const totpCodeInput = document.getElementById("totp-code");
 
-// Ein Secret pro Einrichtung. Nur im Speicher, nie in localStorage/sessionStorage
 let totpSecret = null;
 let totpEmail = null;
 
@@ -26,7 +25,6 @@ togglePasswordButton.addEventListener("click", () => {
         togglePasswordButton.textContent = "Zeigen";
     }
 });
-
 
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -56,7 +54,6 @@ form.addEventListener("submit", async (event) => {
         return;
     }
 
-    // Erster Klick: nur QR-Code zeigen, noch kein Request. Neue E-Mail: neues Secret, weil die E-Mail im Eintrag der App steht
     if (totpSecret === null || totpEmail !== email) {
         if (totpSecret !== null) {
             totpSecret.fill(0);
@@ -100,7 +97,6 @@ form.addEventListener("submit", async (event) => {
             }),
         });
 
-        // Falscher Code: dasselbe Secret behalten, der Nutzer hat es ja schon in der App
         if (response.status === 400) {
             const error = await response.json().catch(() => ({}));
             if (error.reason === "invalid_totp") {
@@ -128,15 +124,12 @@ form.addEventListener("submit", async (event) => {
         sessionStorage.setItem("userId", data.userId);
         sessionStorage.setItem("email", email);
         sessionStorage.setItem("totpEnabled", "true");
-        // Neue Platzhalter-Session für den Vault: ein neuer Login macht den alten Tresor-Token ungültig
         sessionStorage.setItem("vaultSessionId", crypto.randomUUID());
-        // Erster Login: es gibt noch keinen vorherigen, den jetzigen fürs nächste Mal speichern
         sessionStorage.setItem("previousLogin", "");
         localStorage.setItem("lastLogin:" + data.userId, Date.now().toString());
         passwordInput.value = "";
         passwordConfirmInput.value = "";
         window.location.href = "/app/";
-
 
     } catch (error) {
         console.error(error);
@@ -145,6 +138,5 @@ form.addEventListener("submit", async (event) => {
         submitButton.disabled = false;
         submitButton.textContent = "Account erstellen";
     }
-
 
 });
