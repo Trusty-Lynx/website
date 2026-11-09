@@ -91,7 +91,6 @@
     font-size: 18px;
 }
 
-/* Handy: jede Zeile wird eine kleine Karte, die Spaltennamen stehen davor */
 @media (max-width: 640px) {
     .vault-table thead {
         display: none;

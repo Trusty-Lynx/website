@@ -1,5 +1,3 @@
-
-
 const form = document.getElementById("login-form");
 const emailInput = document.getElementById("email");
 const passwordInput = document.getElementById("password");
@@ -8,7 +6,6 @@ const errorText = document.getElementById("auth-error");
 const submitButton = document.getElementById("auth-submit");
 const totpCodeInput = document.getElementById("totp-code");
 
-// Vom Dashboard hierher geschickt, weil der Login abgelaufen ist
 if (new URLSearchParams(location.search).has("abgelaufen")) {
     errorText.textContent = "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.";
 }
@@ -40,7 +37,6 @@ form.addEventListener("submit", async (event) => {
         return;
     }
 
-    // Kein Pflichtfeld: alte Konten (von vor TOTP) haben noch keinen Code
     const rawCode = totpCodeInput.value.trim();
     const totp = rawCode === "" ? null : normalizeTotpCode(rawCode);
     if (rawCode !== "" && totp === null) {
@@ -79,9 +75,8 @@ form.addEventListener("submit", async (event) => {
             }),
         });
 
-        // Der Server sagt absichtlich nicht, was falsch war
         if (loginResponse.status === 401) {
-            totpCodeInput.value = ""; // ein Code gilt nur einmal, also nie denselben noch mal schicken
+            totpCodeInput.value = "";
             errorText.textContent = rawCode === ""
                 ? "Anmeldung fehlgeschlagen. Hast du den Code aus deiner Authenticator-App eingegeben?"
                 : "Anmeldung fehlgeschlagen. Prüfe E-Mail, Passwort und Code. Jeder Code gilt nur einmal.";
@@ -102,11 +97,9 @@ form.addEventListener("submit", async (event) => {
         const loginData = await loginResponse.json();
         sessionStorage.setItem("loginToken", loginData.token);
         sessionStorage.setItem("userId", loginData.userId);
-        sessionStorage.setItem("email", email); // braucht das Dashboard fürs Nachrüsten (QR-Label)
+        sessionStorage.setItem("email", email);
         sessionStorage.setItem("totpEnabled", String(loginData.totpEnabled));
-        // Neue Platzhalter-Session für den Vault: ein neuer Login macht den alten Tresor-Token ungültig
         sessionStorage.setItem("vaultSessionId", crypto.randomUUID());
-        // Letzter Login: den vorherigen Zeitpunkt fürs Dashboard merken, dann den jetzigen speichern (nur auf diesem Gerät)
         const lastLoginKey = "lastLogin:" + loginData.userId;
         sessionStorage.setItem("previousLogin", localStorage.getItem(lastLoginKey) || "");
         localStorage.setItem(lastLoginKey, Date.now().toString());

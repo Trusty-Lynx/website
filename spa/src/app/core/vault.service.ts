@@ -20,13 +20,11 @@ interface Head {
   user: string;
 }
 
-// Eingaben aus dem Formular "Passwort hinzufügen / Eintrag bearbeiten"
 export interface ItemInput extends Head {
   password: string;
   alg: string;
 }
 
-// Ergebnis einer GraphQL-Abfrage. error ist derselbe Code wie früher bei REST ("not_found", "vault_locked", …) oder null
 interface QueryResult<T> {
   data: T | null;
   error: string | null;
@@ -36,7 +34,6 @@ export const LOCKED_MESSAGE = 'Der Tresor wurde gesperrt. Bitte gib dein Masterp
 const AUTO_LOCK_MS = 15 * 60 * 1000;
 
 export function vaultErrorMessage(errorCode: string | null | undefined, fallback: string): string {
-  // Einer der beiden Crypto-Services (AES / ChaCha) ist weg, der Vault sagt in reason welcher
   if (errorCode === 'crypto_unavailable') {
     return 'Verschlüsselungsservice ist gerade nicht erreichbar. Versuche es mit einem anderen oder später wieder.';
   }
@@ -49,29 +46,22 @@ export function vaultErrorMessage(errorCode: string | null | undefined, fallback
   return fallback;
 }
 
-// Hält Tresor-Token und Tresorschlüssel (DEK). Der Service lebt, solange die SPA offen ist,
-// deshalb bleibt der Tresor beim Wechsel zwischen Dashboard und Tresor entsperrt.
 @Injectable({ providedIn: 'root' })
 export class VaultService {
   private auth = inject(AuthService);
 
-  // Nur im Arbeitsspeicher, nie im Storage
   private vaultToken: string | null = null;
   private dek: CryptoKey | null = null;
   private autoLockTimer: ReturnType<typeof setTimeout> | undefined;
 
   readonly unlocked = signal(false);
   readonly items = signal<VaultItem[]>([]);
-  // Meldung auf dem Sperrbildschirm, z. B. "Tresor gesperrt."
   readonly lockMessage = signal('');
-  // Fehler beim Laden der Einträge oder eines Passworts
   readonly error = signal('');
 
-  // Der Tresor läuft komplett über GraphQL (POST /graphql am Vault-Service), Auth und Breach bleiben REST.
   private async query<T>(query: string, variables: object = {}): Promise<QueryResult<T>> {
     const headers: Record<string, string> = {
       'Authorization': 'Bearer ' + this.auth.loginToken,
-      // Platzhalter, solange es kein Gateway gibt
       'X-User-Id': this.auth.userId,
       'X-Session-Id': this.auth.vaultSessionId(),
       'Content-Type': 'application/json',
@@ -86,7 +76,6 @@ export class VaultService {
       body: JSON.stringify({ query: query, variables: variables }),
     });
 
-    // Nur ein ungültiger Login-Token kommt als HTTP-Fehler (401 unauthorized → Login), alles andere mit 200 in "errors"
     if (!response.ok) {
       return { data: null, error: (await this.readError(response)) || 'upstream_error' };
     }
@@ -94,7 +83,6 @@ export class VaultService {
     const result = await response.json();
     const error = result.errors && result.errors[0];
     if (error) {
-      // Fehler ohne code sind Fehler in der Abfrage selbst (Tippfehler im Schema), also unser Bug
       const extensions = error.extensions || {};
       console.warn('Vault-Fehler', extensions.code || error.message, extensions.reason || '',
         'X-Request-ID:', response.headers.get('X-Request-ID'));
@@ -103,7 +91,6 @@ export class VaultService {
     return { data: result.data, error: null };
   }
 
-  // Fehler aus einer REST-Antwort ({ error, reason }): beim Breach-Service und beim 401 von /graphql
   async readError(response: Response): Promise<string | undefined> {
     const data = await response.json().catch(() => ({}));
     console.warn('Vault-Fehler', response.status, data.error, data.reason || '',
@@ -114,7 +101,6 @@ export class VaultService {
     return data.error;
   }
 
-  // Für den Breach-Service: der will Login-Token und Tresor-Token. null = Tresor gesperrt
   breachRequest(method: string, path: string, body?: object): Promise<Response> | null {
     if (!this.vaultToken) {
       return null;
@@ -133,7 +119,6 @@ export class VaultService {
     });
   }
 
-  // 'create' = es gibt noch keinen Tresor, 'unlock' = Tresor vorhanden, null = Fehler (steht in lockMessage)
   async checkVault(): Promise<'create' | 'unlock' | null> {
     try {
       const result = await this.query('query { vaultParams { salt } }');
@@ -151,7 +136,6 @@ export class VaultService {
     return null;
   }
 
-  // Rückgabe: null = geklappt, 'exists' = gibt schon einen Tresor, sonst Fehlermeldung
   async create(password: string): Promise<string | null> {
     try {
       const saltBytes = crypto.getRandomValues(new Uint8Array(16));
@@ -189,7 +173,6 @@ export class VaultService {
     }
   }
 
-  // Rückgabe: null = geklappt, sonst Fehlermeldung
   async unlock(password: string): Promise<string | null> {
     try {
       const paramsResult = await this.query<{ vaultParams: { salt: string; kdf: Kdf } }>(
@@ -211,7 +194,6 @@ export class VaultService {
       );
       keys.unlockKey.fill(0);
 
-      // "unauthorized" in errors heißt hier: falsches Masterpasswort (ein ungültiger Login-Token wäre HTTP 401)
       if (result.error === 'unauthorized') {
         return 'Masterpasswort ist falsch.';
       }
@@ -249,7 +231,6 @@ export class VaultService {
     await this.loadItems();
   }
 
-  // Schlüssel vergessen und Sperrbildschirm zeigen
   forget(message: string): void {
     clearTimeout(this.autoLockTimer);
     this.vaultToken = null;
@@ -294,7 +275,6 @@ export class VaultService {
       const items: VaultItem[] = [];
       for (const item of result.data!.items) {
         const head = await decryptPart<Head>(this.dek!, base64ToBytes(item.head), this.auth.userId, item.id, 'h', item.rev);
-        // alg: welcher Crypto-Service den Eintrag auf dem Server verschlüsselt (älterer Vault ohne Feld → chacha)
         items.push({ id: item.id, rev: item.rev, title: head.title, url: head.url, user: head.user, alg: item.alg || 'chacha' });
       }
       this.items.set(items);
@@ -306,7 +286,6 @@ export class VaultService {
     }
   }
 
-  // Passwort eines Eintrags erst bei Bedarf vom Vault holen. null = Fehler (steht in error)
   async fetchSecret(item: VaultItem): Promise<string | null> {
     this.error.set('');
     try {
@@ -336,8 +315,6 @@ export class VaultService {
     }
   }
 
-  // editing = null → neuer Eintrag, sonst wird dieser Eintrag überschrieben.
-  // Rückgabe: null = geklappt, 'close' = Formular schließen (woanders geändert oder Tresor gesperrt), sonst Fehlermeldung
   async saveItem(editing: VaultItem | null, input: ItemInput): Promise<string | null> {
     try {
       const itemId = editing ? editing.id : crypto.randomUUID();
@@ -355,7 +332,6 @@ export class VaultService {
             rev: rev,
             head: bytesToBase64(head),
             secret: bytesToBase64(secret),
-            // Welcher Crypto-Service Schicht 2 macht. Wechsel beim Bearbeiten: der Vault verschlüsselt einfach neu.
             alg: input.alg,
           },
         }
@@ -385,7 +361,6 @@ export class VaultService {
     }
   }
 
-  // Rückgabe: null = geklappt, sonst Fehlermeldung
   async deleteItem(item: VaultItem): Promise<string | null> {
     try {
       const result = await this.query(
@@ -393,7 +368,6 @@ export class VaultService {
         { itemId: item.id }
       );
 
-      // not_found: schon gelöscht (z. B. auf einem anderen Gerät), dann einfach aus der Liste nehmen
       if (result.error && result.error !== 'not_found') {
         if (result.error === 'vault_locked') {
           this.forget(LOCKED_MESSAGE);
